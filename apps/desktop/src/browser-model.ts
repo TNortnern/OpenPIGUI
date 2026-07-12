@@ -42,6 +42,14 @@ export interface BrowserElementSelection {
   readonly rect: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 }
 
+export interface BrowserSelectionCapture {
+  readonly data: string;
+  readonly mimeType: "image/png";
+  readonly width: number;
+  readonly height: number;
+  readonly selector: string;
+}
+
 export interface BrowserNavigateInput extends BrowserTarget {
   readonly url: string;
   readonly source: "address-bar" | "link" | "agent";

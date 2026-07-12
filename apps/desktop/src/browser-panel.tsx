@@ -10,6 +10,7 @@ import {
 import {
   createEmptyBrowserState,
   normalizeBrowserUrl,
+  type BrowserSelectionCapture,
   type BrowserStateSnapshot,
   type BrowserTarget,
 } from "./browser-model";
@@ -23,7 +24,7 @@ export interface BrowserPanelProps {
   readonly skillCommands?: readonly { readonly id: string; readonly title: string; readonly command: string; readonly sourceLabel?: string }[];
   readonly modelControl?: ReactNode;
   readonly sessionRunning?: boolean;
-  readonly onSubmitDesignPrompt?: (prompt: string) => Promise<void> | void;
+  readonly onSubmitDesignPrompt?: (prompt: string, capture: BrowserSelectionCapture | null) => Promise<void> | void;
 }
 
 export function BrowserPanel({
@@ -289,7 +290,7 @@ export function BrowserPanel({
       ? [
           "<browser_design_context>",
           `url: ${selection.url}`,
-          `element: ${selection.cssPath}`,
+          `selector: ${selection.cssPath}`,
           selection.text ? `text: ${selection.text}` : "",
           `bounds: ${Math.round(selection.rect.width)}x${Math.round(selection.rect.height)} at ${Math.round(selection.rect.x)},${Math.round(selection.rect.y)}`,
           "</browser_design_context>",
@@ -297,7 +298,8 @@ export function BrowserPanel({
       : `<browser_design_context>\nurl: ${state.url}\n</browser_design_context>`;
     setSubmittingPrompt(true);
     try {
-      await onSubmitDesignPrompt(`${prompt}\n\n${context}`);
+      const capture = await api?.captureBrowserSelection?.(target) ?? null;
+      await onSubmitDesignPrompt(`${prompt}\n\n${context}`, capture);
       setDesignPrompt("");
       setSkillsOpen(false);
     } finally {
@@ -549,6 +551,7 @@ interface BrowserPanelApi {
   readonly browserReload?: (target: BrowserTarget) => Promise<BrowserStateSnapshot>;
   readonly browserStop?: (target: BrowserTarget) => Promise<BrowserStateSnapshot>;
   readonly setBrowserDesignMode?: (target: BrowserTarget, enabled: boolean) => Promise<BrowserStateSnapshot>;
+  readonly captureBrowserSelection?: (target: BrowserTarget) => Promise<BrowserSelectionCapture | null>;
   readonly setBrowserBounds?: (bounds: {
     readonly x: number;
     readonly y: number;

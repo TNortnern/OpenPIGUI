@@ -17,6 +17,7 @@ import {
   type BrowserBounds,
   type BrowserElementSelection,
   type BrowserNavigateInput,
+  type BrowserSelectionCapture,
   type BrowserStateSnapshot,
   type BrowserTarget,
 } from "../src/browser-model";
@@ -205,6 +206,47 @@ export class BrowserPanelService {
       this.installDesignPicker(instance);
     }
     return this.publishState(instance);
+  }
+
+  async captureSelection(owner: WebContents): Promise<BrowserSelectionCapture | null> {
+    const instance = this.requireInstance(owner);
+    const selection = instance.selectedElement;
+    const wc = instance.view.webContents;
+    if (!selection || wc.isDestroyed()) return null;
+
+    const captureRect = await wc.executeJavaScript(`(() => {
+      document.querySelector('[data-pi-design-capture]')?.remove();
+      const source = ${JSON.stringify(selection.rect)};
+      const padding = 14;
+      const x = Math.max(0, Math.floor(source.x - padding));
+      const y = Math.max(0, Math.floor(source.y - padding));
+      const right = Math.min(window.innerWidth, Math.ceil(source.x + source.width + padding));
+      const bottom = Math.min(window.innerHeight, Math.ceil(source.y + source.height + padding));
+      const overlay = document.createElement('div');
+      overlay.setAttribute('data-pi-design-capture', '');
+      Object.assign(overlay.style, {
+        position: 'fixed', pointerEvents: 'none', zIndex: '2147483647',
+        left: source.x + 'px', top: source.y + 'px', width: source.width + 'px', height: source.height + 'px',
+        boxSizing: 'border-box', border: '3px solid #62a8ff', background: 'rgba(98,168,255,.12)',
+        boxShadow: '0 0 0 2px rgba(255,255,255,.85), 0 8px 26px rgba(0,0,0,.28)'
+      });
+      document.documentElement.appendChild(overlay);
+      return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve({ x, y, width: Math.max(1, right - x), height: Math.max(1, bottom - y) }))));
+    })()`, true) as { x: number; y: number; width: number; height: number };
+
+    try {
+      const image = await wc.capturePage(captureRect);
+      const size = image.getSize();
+      return {
+        data: image.toPNG().toString("base64"),
+        mimeType: "image/png",
+        width: size.width,
+        height: size.height,
+        selector: selection.cssPath,
+      };
+    } finally {
+      await wc.executeJavaScript("document.querySelector('[data-pi-design-capture]')?.remove(); true", true).catch(() => undefined);
+    }
   }
 
   /**

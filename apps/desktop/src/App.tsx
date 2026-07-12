@@ -42,6 +42,7 @@ import { SidebarToggleButton } from "./sidebar-toggle-button";
 import { Topbar } from "./topbar";
 import { TerminalPanel } from "./terminal-panel";
 import { BrowserPanel } from "./browser-panel";
+import type { BrowserSelectionCapture } from "./browser-model";
 import { RightRail } from "./right-rail";
 import {
   applyRightRailClose,
@@ -1721,9 +1722,21 @@ export default function App() {
     focusComposer();
   };
 
-  const submitBrowserDesignPrompt = async (prompt: string): Promise<void> => {
+  const submitBrowserDesignPrompt = async (
+    prompt: string,
+    capture: BrowserSelectionCapture | null,
+  ): Promise<void> => {
     if (!selectedSession || !prompt.trim() || selectedSessionModelOnboarding.requiresModelSelection) return;
     rememberComposerHistory(selectedSessionKey, prompt);
+    if (capture) {
+      await updateSnapshot(api, setSnapshot, () => api.addComposerAttachments([{
+        id: `browser-design-${Date.now().toString(36)}`,
+        kind: "image",
+        name: `browser-selection-${capture.selector.split(" > ").at(-1) ?? "element"}.png`,
+        mimeType: capture.mimeType,
+        data: capture.data,
+      }]));
+    }
     await updateSnapshot(api, setSnapshot, () =>
       api.submitComposer(
         prompt,

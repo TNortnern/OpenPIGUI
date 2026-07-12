@@ -1359,6 +1359,10 @@ app.whenReady().then(async () => {
     getBrowserPanelService().ensure(event.sender, target);
     return getBrowserPanelService().setDesignMode(event.sender, Boolean(enabled));
   });
+  ipcMain.handle(desktopIpc.browserCaptureSelection, (event, target: BrowserTarget) => {
+    getBrowserPanelService().ensure(event.sender, target);
+    return getBrowserPanelService().captureSelection(event.sender);
+  });
   ipcMain.handle(desktopIpc.browserSetBounds, (event, bounds: BrowserBounds) => {
     if (!isValidBrowserBounds(bounds)) {
       return;

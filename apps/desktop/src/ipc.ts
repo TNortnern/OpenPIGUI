@@ -26,6 +26,7 @@ import type {
 import type {
   BrowserBounds,
   BrowserNavigateInput,
+  BrowserSelectionCapture,
   BrowserStateSnapshot,
   BrowserTarget,
 } from "./browser-model";
@@ -133,6 +134,7 @@ export const desktopIpc = {
   browserReload: "pi-gui:browser-reload",
   browserStop: "pi-gui:browser-stop",
   browserSetDesignMode: "pi-gui:browser-set-design-mode",
+  browserCaptureSelection: "pi-gui:browser-capture-selection",
   browserSetBounds: "pi-gui:browser-set-bounds",
   browserSetVisible: "pi-gui:browser-set-visible",
   browserGetState: "pi-gui:browser-get-state",
@@ -372,6 +374,7 @@ export interface PiDesktopApi {
   browserReload(target: BrowserTarget): Promise<BrowserStateSnapshot>;
   browserStop(target: BrowserTarget): Promise<BrowserStateSnapshot>;
   setBrowserDesignMode(target: BrowserTarget, enabled: boolean): Promise<BrowserStateSnapshot>;
+  captureBrowserSelection(target: BrowserTarget): Promise<BrowserSelectionCapture | null>;
   setBrowserBounds(bounds: BrowserBounds): Promise<void>;
   setBrowserVisible(visible: boolean, target?: BrowserTarget): Promise<void>;
   getBrowserState(): Promise<BrowserStateSnapshot | null>;

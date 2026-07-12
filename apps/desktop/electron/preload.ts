@@ -17,6 +17,7 @@ import {
 import type {
   BrowserBounds,
   BrowserNavigateInput,
+  BrowserSelectionCapture,
   BrowserStateSnapshot,
   BrowserTarget,
 } from "../src/browser-model";
@@ -235,6 +236,8 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.browserStop, target) as Promise<BrowserStateSnapshot>,
   setBrowserDesignMode: (target: BrowserTarget, enabled: boolean) =>
     ipcRenderer.invoke(desktopIpc.browserSetDesignMode, target, enabled) as Promise<BrowserStateSnapshot>,
+  captureBrowserSelection: (target: BrowserTarget) =>
+    ipcRenderer.invoke(desktopIpc.browserCaptureSelection, target) as Promise<BrowserSelectionCapture | null>,
   setBrowserBounds: (bounds: BrowserBounds) =>
     ipcRenderer.invoke(desktopIpc.browserSetBounds, bounds) as Promise<void>,
   setBrowserVisible: (visible: boolean, target?: BrowserTarget) =>

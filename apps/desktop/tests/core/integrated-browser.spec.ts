@@ -111,6 +111,15 @@ test("browses deterministic HTTP in the right rail with bounds below chrome", as
     expect(designState?.designMode).toBe(false);
     expect(designState?.selectedElement?.text).toBe("PI_BROWSER_OK");
     expect(designState?.selectedElement?.attributes["data-testid"]).toBe("fixture-heading");
+    const selectionCapture = await window.evaluate(async () => {
+      const state = await window.piApp?.getBrowserState();
+      if (!state || !window.piApp?.captureBrowserSelection) return null;
+      return window.piApp.captureBrowserSelection(state.target);
+    });
+    expect(selectionCapture?.data.startsWith("iVBOR")).toBe(true);
+    expect(selectionCapture?.width ?? 0).toBeGreaterThan(20);
+    expect(selectionCapture?.height ?? 0).toBeGreaterThan(20);
+    expect(selectionCapture?.selector).toContain("h1");
     await expect(window.getByTestId("browser-design-composer")).toBeVisible();
     await expect(window.getByTestId("browser-design-prompt")).toBeVisible();
 
