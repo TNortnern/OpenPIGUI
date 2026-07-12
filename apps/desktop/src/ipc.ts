@@ -38,6 +38,26 @@ export type DesktopNotificationPermissionStatus =
   | "unsupported"
   | "unknown";
 
+export type UpdatePhase =
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "up-to-date"
+  | "error";
+
+export interface UpdateState {
+  readonly phase: UpdatePhase;
+  readonly currentVersion: string;
+  readonly availableVersion?: string;
+  readonly percent?: number;
+  readonly message?: string;
+  readonly canRetry: boolean;
+  readonly canRestart: boolean;
+}
+
 
 export interface CustomProviderModelConfig {
   readonly id: string;
