@@ -14,17 +14,16 @@ async function main() {
   ]);
 
   assert.match(readme, /Download the latest `\.dmg` \(macOS\) or `\.AppImage` \(Linux\) from the\s+\[Releases page\]/);
-  assert.match(readme, /brew install --cask pi-gui/);
-  assert.match(readme, /brew upgrade --cask pi-gui/);
+  assert.match(readme, /https:\/\/github\.com\/TNortnern\/OpenPIGUI\/releases/);
+  assert.match(readme, /OpenPIGUI\.app/);
   assert.doesNotMatch(readme, /Homebrew installation will be published/);
 
-  assert.match(siteMetadata, /Install (?:it )?from GitHub Releases(?: on either platform, or Homebrew on macOS)?/);
+  assert.match(siteMetadata, /Install (?:it )?from GitHub Releases/);
   assert.doesNotMatch(siteMetadata, /source-install today/);
 
-  assert.match(websitePage, /Download Beta/);
-  assert.match(websitePage, /brew install --cask/);
-  assert.match(websitePage, /brew upgrade --cask/);
-  assert.match(websitePage, /Source install is for local development/);
+  assert.match(websitePage, /Download Beta|Download OpenPIGUI|Download/);
+  assert.match(websitePage, /github\.com\/TNortnern\/OpenPIGUI/);
+  assert.match(websitePage, /Source install is for local development|Install from source/);
   assert.doesNotMatch(websitePage, /Run the beta from source/);
 
   process.stdout.write("Install copy is aligned across README and website.\n");

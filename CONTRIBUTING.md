@@ -1,6 +1,6 @@
-# Contributing to pi-gui
+# Contributing to OpenPIGUI
 
-Thanks for your interest in improving pi-gui. This guide covers local setup, the
+Thanks for your interest in improving OpenPIGUI. This guide covers local setup, the
 test lanes, and what "done" means for a change.
 
 ## Prerequisites

@@ -1,6 +1,6 @@
-appId: com.pi-gui.desktop
-productName: pi-gui
-copyright: Copyright 2026 Matthew Lam
+appId: com.openpigui.desktop
+productName: OpenPIGUI
+copyright: Copyright 2026 Trayvon Northern
 electronVersion: 37.10.3
 
 directories:
@@ -30,7 +30,8 @@ mac:
   gatekeeperAssess: false
   entitlements: resources/entitlements.mac.plist
   entitlementsInherit: resources/entitlements.mac.inherit.plist
-  notarize: true
+  # Local/dev releases may ship without notarization secrets; CI can enable via env.
+  notarize: false
   target:
     - target: dmg
       arch: arm64
@@ -38,19 +39,19 @@ mac:
       arch: arm64
   darkModeSupport: true
   extendInfo:
-    NSMicrophoneUsageDescription: Voice dictation turns your speech into prompts inside pi-gui.
+    NSMicrophoneUsageDescription: Voice dictation turns your speech into prompts inside OpenPIGUI.
   extraFiles:
     - from: build/native/pi-gui-notification-status-helper
       to: MacOS/pi-gui-notification-status-helper
 
 linux:
   category: Development
-  executableName: pi-gui
+  executableName: openpigui
   target:
     - target: AppImage
 
 win:
-  executableName: pi-gui
+  executableName: OpenPIGUI
   signAndEditExecutable: false
   target:
     - target: nsis
@@ -77,5 +78,5 @@ dmg:
 
 publish:
   provider: github
-  owner: minghinmatthewlam
-  repo: pi-gui
+  owner: TNortnern
+  repo: OpenPIGUI

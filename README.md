@@ -1,21 +1,66 @@
-# pi-gui
+# OpenPIGUI
 
-A Codex-style desktop app for the [`pi`](https://github.com/earendil-works/pi) coding agent.
+<p align="center">
+  <img src="./docs/assets/openpigui-logo.png" alt="OpenPIGUI logo" width="128" height="128" />
+</p>
+
+<p align="center">
+  <strong>Open-source Codex-style desktop app for the <a href="https://github.com/earendil-works/pi"><code>pi</code></a> coding agent.</strong>
+</p>
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
-[![Latest release](https://img.shields.io/github/v/release/minghinmatthewlam/pi-gui?include_prereleases&label=release)](https://github.com/minghinmatthewlam/pi-gui/releases)
+[![Latest release](https://img.shields.io/github/v/release/TNortnern/OpenPIGUI?include_prereleases&label=release)](https://github.com/TNortnern/OpenPIGUI/releases)
 [![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux-lightgrey.svg)](#install)
+[![GitHub stars](https://img.shields.io/github/stars/TNortnern/OpenPIGUI?style=social)](https://github.com/TNortnern/OpenPIGUI)
 
-pi-gui gives `pi` a native home on the desktop: a threaded timeline of your agent
+OpenPIGUI gives `pi` a native home on the desktop: a threaded timeline of your agent
 sessions, git worktrees per thread, an integrated terminal and inline diff viewer,
 and multi-agent orchestration — all backed by `pi`'s own session files as the source
 of truth. It is a UI shell around [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent),
 not a separate agent runtime: session management, model/auth setup, and agent
 execution all run through upstream `pi`.
 
-![pi-gui in action](./docs/assets/demo.gif)
+![OpenPIGUI in action](./docs/assets/demo.gif)
 
 <sub>Expanding a tool call, reviewing the diff panel, the integrated terminal, and a theme switch. ([higher-quality MP4](./docs/assets/demo.mp4))</sub>
+
+## Install
+
+OpenPIGUI is in public beta for **macOS (Apple Silicon)** and **Linux (AppImage)**.
+
+### Download (recommended)
+
+Download the latest `.dmg` (macOS) or `.AppImage` (Linux) from the
+[Releases page](https://github.com/TNortnern/OpenPIGUI/releases).
+
+**macOS**
+
+1. Open the `.dmg` and drag `OpenPIGUI.app` into `/Applications`.
+2. Launch **OpenPIGUI** from Applications or Spotlight.
+3. If macOS Gatekeeper blocks the first launch (unsigned/unnotarized builds during beta), right-click the app → **Open** → confirm **Open**.
+
+**Linux**
+
+```bash
+chmod +x OpenPIGUI-*-linux-*.AppImage   # or the exact filename from Releases
+./OpenPIGUI-*.AppImage
+```
+
+### From source
+
+See [Development](#development). Building from source is intended for contributors,
+not as the primary install path.
+
+## Quickstart
+
+1. Install OpenPIGUI and launch it.
+2. Open **Settings → Providers** and connect a model provider (OAuth or API key).
+3. Add a workspace (a local project folder).
+4. Click **New thread**, pick `Local` or `Worktree`, and send your first prompt.
+
+You need valid model/provider authentication that `pi` supports; OpenPIGUI uses `pi`'s
+auth and session state, so anything you've already configured with the `pi` CLI
+carries over.
 
 ## Screenshots
 
@@ -47,47 +92,9 @@ execution all run through upstream `pi`.
 - **Multiple providers** — connect model providers via OAuth or API key under
   **Settings → Providers**.
 
-## Install
-
-pi-gui is in public beta for **macOS (Apple Silicon)** and **Linux (AppImage)**.
-
-### From GitHub Releases
-
-Download the latest `.dmg` (macOS) or `.AppImage` (Linux) from the
-[Releases page](https://github.com/minghinmatthewlam/pi-gui/releases).
-
-On macOS, drag `pi-gui.app` into `/Applications` and launch it. Releases are signed
-and notarized. To update, download the newer release and replace the app.
-
-### With Homebrew (macOS)
-
-```bash
-brew tap minghinmatthewlam/tap
-brew install --cask pi-gui
-```
-
-Update with `brew upgrade --cask pi-gui`. During beta, a Homebrew upgrade may prompt
-you to re-confirm macOS permissions or Dock placement.
-
-### From source
-
-See [Development](#development). Building from source is intended for contributors,
-not as the primary install path.
-
-## Quickstart
-
-1. Install pi-gui and launch it.
-2. Open **Settings → Providers** and connect a model provider (OAuth or API key).
-3. Add a workspace (a local project folder).
-4. Click **New thread**, pick `Local` or `Worktree`, and send your first prompt.
-
-You need valid model/provider authentication that `pi` supports; pi-gui uses `pi`'s
-auth and session state, so anything you've already configured with the `pi` CLI
-carries over.
-
 ## Architecture
 
-pi-gui is an Electron app organized around a tight main/preload/renderer boundary,
+OpenPIGUI is an Electron app organized around a tight main/preload/renderer boundary,
 sitting on top of the `pi` runtime:
 
 - **Renderer** (`apps/desktop/src`) — the React UI: timeline, composer, diff panel,
@@ -100,7 +107,7 @@ sitting on top of the `pi` runtime:
   `@earendil-works/pi-coding-agent`. It stays close to upstream `pi` and does not
   fork or reimplement runtime behavior.
 - **JSONL session files as the source of truth** — `pi` persists each session as a
-  JSONL transcript on disk; pi-gui reads those files as the authoritative record for
+  JSONL transcript on disk; OpenPIGUI reads those files as the authoritative record for
   closed sessions rather than keeping a divergent copy.
 
 Supporting packages: `packages/session-driver` (shared session driver types) and
@@ -133,7 +140,13 @@ pnpm --filter @pi-gui/desktop run test:e2e:all   # core + live + native
 ```
 
 See [`apps/desktop/README.md`](./apps/desktop/README.md) for lane details and
-platform-specific packaging notes. Package a Linux AppImage locally with:
+platform-specific packaging notes. Package a macOS build locally with:
+
+```bash
+pnpm --filter @pi-gui/desktop run package
+```
+
+Package a Linux AppImage locally with:
 
 ```bash
 pnpm --filter @pi-gui/desktop run package:linux
@@ -153,18 +166,15 @@ Contributions are welcome — see [CONTRIBUTING.md](./CONTRIBUTING.md) for setup
 verification expectations, and the desktop test lanes. Desktop changes are expected
 to be verified on the real Electron surface, not only by unit tests.
 
-## Computer use
-
-Native computer use is not built into pi-gui. Desktop/browser control is available
-separately through the author's standalone
-[`computer-use-mcp`](https://github.com/minghinmatthewlam/computer-use-mcp) server,
-which any MCP-capable agent can use.
-
 ## Acknowledgements
+
+OpenPIGUI is an open fork/rebrand of the community `pi-gui` desktop shell.
 
 - Built on [`@earendil-works/pi-coding-agent`](https://www.npmjs.com/package/@earendil-works/pi-coding-agent).
 - Upstream runtime and ecosystem by [`earendil-works/pi`](https://github.com/earendil-works/pi).
+- Original `pi-gui` desktop work by [Matthew Lam](https://github.com/minghinmatthewlam).
 
 ## License
 
-[MIT](./LICENSE) © Matthew Lam
+[MIT](./LICENSE) © Trayvon Northern and contributors.
+Original portions © Matthew Lam.

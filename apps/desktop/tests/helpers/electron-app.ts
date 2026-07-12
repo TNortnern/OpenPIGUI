@@ -428,7 +428,10 @@ export async function resolvePackagedAppBundle(releaseDir = packagedReleaseDir):
     throw error;
   }
 
-  const appBundle = appBundles.find((candidate) => basename(candidate) === "pi-gui.app") ?? appBundles[0];
+  const appBundle =
+    appBundles.find((candidate) => basename(candidate) === "OpenPIGUI.app") ??
+    appBundles.find((candidate) => basename(candidate) === "pi-gui.app") ??
+    appBundles[0];
   if (!appBundle) {
     throw new Error(`No .app bundle found under ${releaseDir}. Run pnpm --filter @pi-gui/desktop run package:dir first.`);
   }

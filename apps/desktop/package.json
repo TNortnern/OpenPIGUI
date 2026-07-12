@@ -2,9 +2,9 @@
   "name": "@pi-gui/desktop",
   "private": true,
   "version": "0.1.0-beta.32",
-  "author": "Matthew Lam",
+  "author": "Trayvon Northern",
   "license": "MIT",
-  "description": "Codex-style desktop shell for pi",
+  "description": "OpenPIGUI — Codex-style desktop shell for pi",
   "main": "out/main/main.js",
   "scripts": {
     "build:deps": "pnpm --dir ../.. --filter @pi-gui/session-driver --filter @pi-gui/pi-sdk-driver --filter @pi-gui/catalogs run build",

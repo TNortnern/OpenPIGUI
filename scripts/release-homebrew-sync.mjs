@@ -19,7 +19,7 @@ async function main() {
     options: {
       "asset-name": { type: "string" },
       "asset-url": { type: "string" },
-      "cask-token": { type: "string", default: "pi-gui" },
+      "cask-token": { type: "string", default: "openpigui" },
       "commit": { type: "boolean", default: false },
       "commit-message": { type: "string" },
       "dmg-path": { type: "string" },

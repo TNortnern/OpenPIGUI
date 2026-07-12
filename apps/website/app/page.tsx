@@ -6,9 +6,9 @@ import {
   SITE_URL,
 } from "./site";
 
-const GITHUB_URL = "https://github.com/minghinmatthewlam/pi-gui";
-const RELEASES_URL = "https://github.com/minghinmatthewlam/pi-gui/releases/latest";
-const PI_MONO_URL = "https://github.com/mariozechner/pi";
+const GITHUB_URL = "https://github.com/TNortnern/OpenPIGUI";
+const RELEASES_URL = "https://github.com/TNortnern/OpenPIGUI/releases/latest";
+const PI_MONO_URL = "https://github.com/earendil-works/pi";
 
 const softwareApplicationJsonLd = {
   "@context": "https://schema.org",
@@ -87,7 +87,7 @@ export default function Page() {
       {/* ===== Nav ===== */}
       <nav className="nav">
         <div className="nav-inner">
-          <span className="nav-logo">pi-gui</span>
+          <span className="nav-logo">OpenPIGUI</span>
           <div className="nav-links">
             <a href="#features" className="nav-link">
               Features
@@ -130,7 +130,7 @@ export default function Page() {
               AI coding agents
             </h1>
             <p className="hero-subtitle">
-              pi-gui is a Codex-style macOS and Linux desktop app for the{" "}
+              OpenPIGUI is a Codex-style macOS and Linux desktop app for the{" "}
               <a
                 href={PI_MONO_URL}
                 target="_blank"
@@ -186,7 +186,7 @@ export default function Page() {
         <section className="value-prop">
           <div className="container container--narrow">
             <p>
-              From quick fixes to complex refactors, pi-gui gives you a
+              From quick fixes to complex refactors, OpenPIGUI gives you a
               persistent desktop workspace for AI-powered coding sessions —
               with full visibility into what the agent is doing and why.
             </p>
@@ -234,7 +234,7 @@ export default function Page() {
                 <div className="feature-icon" aria-hidden="true"><WrenchIcon /></div>
                 <h3>Skills &amp; slash commands</h3>
                 <p>
-                  Extend pi-gui with workspace-specific skills and slash
+                  Extend OpenPIGUI with workspace-specific skills and slash
                   commands for model switching, thinking levels, settings, and
                   custom workflows.
                 </p>
@@ -302,29 +302,20 @@ export default function Page() {
             <h2 className="section-heading">Install the beta your way</h2>
             <div className="code-block">
               <code>
-                <span className="code-comment"># Direct install from GitHub Releases</span>
+                <span className="code-comment"># Direct install from GitHub Releases (recommended)</span>
                 {"\n"}
                 <span className="code-command">open</span>{" "}
                 {RELEASES_URL}
                 {"\n\n"}
-                <span className="code-comment"># Or install with Homebrew</span>
+                <span className="code-comment"># macOS: open the DMG and drag OpenPIGUI.app into Applications</span>
                 {"\n"}
-                <span className="code-command">brew tap</span>{" "}
-                minghinmatthewlam/tap
-                {"\n"}
-                <span className="code-command">brew install --cask</span>{" "}
-                pi-gui
-                {"\n\n"}
-                <span className="code-comment"># Later, update the Homebrew install</span>
-                {"\n"}
-                <span className="code-command">brew upgrade --cask</span>{" "}
-                pi-gui
+                <span className="code-comment"># Linux: chmod +x the AppImage, then run it</span>
                 {"\n\n"}
                 <span className="code-comment"># Source install is for local development</span>
                 {"\n"}
                 <span className="code-command">git clone</span>{" "}
                 {GITHUB_URL}.git{"\n"}
-                <span className="code-command">cd</span> pi-gui{"\n\n"}
+                <span className="code-command">cd</span> OpenPIGUI{"\n\n"}
                 <span className="code-comment"># Install dependencies and run</span>
                 {"\n"}
                 <span className="code-command">pnpm install</span>
@@ -333,10 +324,8 @@ export default function Page() {
               </code>
             </div>
             <p className="section-subtitle">
-              DMG installs update from GitHub Releases. Homebrew installs update
-              with <code>brew upgrade --cask pi-gui</code>. During beta,
-              Homebrew upgrades may require re-confirming some macOS permissions
-              or Dock placement after reinstall-style updates.
+              Install from GitHub Releases and update by downloading the newer
+              build. Source install is for local development and contributors.
             </p>
             <div className="hero-ctas">
               <a
@@ -365,7 +354,7 @@ export default function Page() {
       {/* ===== Footer ===== */}
       <footer className="footer">
         <div className="footer-inner">
-          <span>pi-gui</span>
+          <span>OpenPIGUI</span>
           <span className="footer-sep">&middot;</span>
           <span>MIT License</span>
           <span className="footer-sep">&middot;</span>

@@ -7,11 +7,11 @@ const SHA256_PATTERN = /^(\s*sha256\s+")([^"]+)(")$/m;
 const URL_PATTERN = /^(\s*url\s+")([^"]+)(")$/m;
 const CASK_PATTERN = /^cask "([^"]+)" do$/m;
 
-export function resolveCaskPath(tapDir, caskToken = "pi-gui") {
+export function resolveCaskPath(tapDir, caskToken = "openpigui") {
   return path.join(path.resolve(tapDir), "Casks", `${caskToken}.rb`);
 }
 
-export function renderCask({ assetUrl, caskToken = "pi-gui", sha256, version }) {
+export function renderCask({ assetUrl, caskToken = "openpigui", sha256, version }) {
   return `# typed: false
 # frozen_string_literal: true
 
@@ -20,18 +20,18 @@ cask "${caskToken}" do
   sha256 "${sha256}"
 
   url "${assetUrl}"
-  name "pi-gui"
-  desc "Codex-style desktop shell for pi"
-  homepage "https://github.com/minghinmatthewlam/pi-gui"
+  name "OpenPIGUI"
+  desc "Codex-style desktop shell for the pi coding agent"
+  homepage "https://github.com/TNortnern/OpenPIGUI"
 
   depends_on arch: :arm64
 
-  app "pi-gui.app"
+  app "OpenPIGUI.app"
 end
 `;
 }
 
-export function updateCaskContent(existingContent, { assetUrl, caskToken = "pi-gui", sha256, version }) {
+export function updateCaskContent(existingContent, { assetUrl, caskToken = "openpigui", sha256, version }) {
   const tokenMatch = existingContent.match(CASK_PATTERN);
   if (!tokenMatch) {
     throw new Error("Unable to find cask token declaration in Homebrew cask.");
@@ -71,7 +71,7 @@ export function updateCaskContent(existingContent, { assetUrl, caskToken = "pi-g
 
 export async function applyHomebrewTapUpdate({
   assetUrl,
-  caskToken = "pi-gui",
+  caskToken = "openpigui",
   dryRun = false,
   sha256,
   tapDir,
