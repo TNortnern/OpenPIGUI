@@ -5,6 +5,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import {
   createEmptyBrowserState,
@@ -19,6 +20,10 @@ export interface BrowserPanelProps {
   readonly sessionId: string;
   readonly rememberedUrl?: string;
   readonly onRememberUrl?: (url: string) => void;
+  readonly skillCommands?: readonly { readonly id: string; readonly title: string; readonly command: string; readonly sourceLabel?: string }[];
+  readonly modelControl?: ReactNode;
+  readonly sessionRunning?: boolean;
+  readonly onSubmitDesignPrompt?: (prompt: string) => Promise<void> | void;
 }
 
 export function BrowserPanel({
@@ -26,6 +31,10 @@ export function BrowserPanel({
   sessionId,
   rememberedUrl,
   onRememberUrl,
+  skillCommands = [],
+  modelControl,
+  sessionRunning = false,
+  onSubmitDesignPrompt,
 }: BrowserPanelProps) {
   const api = window.piApp as BrowserPanelApi | undefined;
   const target: BrowserTarget = { workspaceId, sessionId };
@@ -41,6 +50,12 @@ export function BrowserPanel({
   const [addressValue, setAddressValue] = useState(rememberedUrl ?? "");
   const [addressError, setAddressError] = useState("");
   const [chromeError, setChromeError] = useState("");
+  const [designPrompt, setDesignPrompt] = useState("");
+  const [skillsOpen, setSkillsOpen] = useState(false);
+  const [submittingPrompt, setSubmittingPrompt] = useState(false);
+  const [dictating, setDictating] = useState(false);
+  const [dictationError, setDictationError] = useState("");
+  const recognitionRef = useRef<BrowserSpeechRecognition | null>(null);
 
   const applyState = useCallback((next: BrowserStateSnapshot) => {
     if (next.target.workspaceId !== workspaceId || next.target.sessionId !== sessionId) {
@@ -266,6 +281,68 @@ export function BrowserPanel({
     void runNav(() => api.setBrowserDesignMode!(target, !state.designMode));
   };
 
+  const submitDesignPrompt = async () => {
+    const prompt = designPrompt.trim();
+    if (!prompt || !onSubmitDesignPrompt || submittingPrompt) return;
+    const selection = state.selectedElement;
+    const context = selection
+      ? [
+          "<browser_design_context>",
+          `url: ${selection.url}`,
+          `element: ${selection.cssPath}`,
+          selection.text ? `text: ${selection.text}` : "",
+          `bounds: ${Math.round(selection.rect.width)}x${Math.round(selection.rect.height)} at ${Math.round(selection.rect.x)},${Math.round(selection.rect.y)}`,
+          "</browser_design_context>",
+        ].filter(Boolean).join("\n")
+      : `<browser_design_context>\nurl: ${state.url}\n</browser_design_context>`;
+    setSubmittingPrompt(true);
+    try {
+      await onSubmitDesignPrompt(`${prompt}\n\n${context}`);
+      setDesignPrompt("");
+      setSkillsOpen(false);
+    } finally {
+      setSubmittingPrompt(false);
+    }
+  };
+
+  const toggleDictation = () => {
+    if (dictating) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setDictationError("Voice transcription is unavailable in this Electron build");
+      return;
+    }
+    setDictationError("");
+    const recognition = new Recognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language || "en-US";
+    let committed = designPrompt;
+    recognition.onresult = (event) => {
+      let interim = "";
+      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        if (!result) continue;
+        const transcript = result?.[0]?.transcript?.trim() ?? "";
+        if (!transcript) continue;
+        if (result.isFinal) committed = `${committed}${committed && !committed.endsWith(" ") ? " " : ""}${transcript}`;
+        else interim += `${interim ? " " : ""}${transcript}`;
+      }
+      setDesignPrompt(`${committed}${interim ? `${committed ? " " : ""}${interim}` : ""}`);
+    };
+    recognition.onerror = (event) => setDictationError(event.error === "not-allowed" ? "Microphone access was denied" : `Voice transcription failed: ${event.error}`);
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setDictating(false);
+    };
+    recognitionRef.current = recognition;
+    setDictating(true);
+    recognition.start();
+  };
+
   const statusLabel = state.loading
     ? "Loading…"
     : state.crashed
@@ -377,25 +454,62 @@ export function BrowserPanel({
         </div>
       ) : null}
 
-      {state.selectedElement ? (
-        <div className="browser-panel__selection" data-testid="browser-design-selection">
-          <span className="browser-panel__selection-label">Selected</span>
-          <code>{state.selectedElement.cssPath}</code>
-          {state.selectedElement.text ? <span>{state.selectedElement.text}</span> : null}
-          <button
-            type="button"
-            onClick={() => void navigator.clipboard.writeText(
-              `Design context: ${state.selectedElement!.tagName} at ${state.selectedElement!.cssPath}\nText: ${state.selectedElement!.text}\nURL: ${state.selectedElement!.url}`,
-            )}
-          >Copy context</button>
-        </div>
-      ) : null}
-
       <div
         ref={viewportRef}
         className="browser-panel__viewport-anchor"
         data-testid="browser-viewport-anchor"
       />
+
+      {(state.designMode || state.selectedElement) && onSubmitDesignPrompt ? (
+        <div className="browser-design-composer" data-testid="browser-design-composer">
+          {state.selectedElement ? (
+            <div className="browser-design-composer__selection" data-testid="browser-design-selection">
+              <SelectionCursorIcon />
+              <span>{state.selectedElement.tagName}</span>
+              <code>{state.selectedElement.cssPath}</code>
+              <button type="button" aria-label="Pick another element" onClick={handleDesignMode}>Change</button>
+            </div>
+          ) : null}
+          <textarea
+            aria-label="Design prompt"
+            data-testid="browser-design-prompt"
+            placeholder={state.selectedElement ? "Describe how you want this element changed…" : "Select an element, then describe the change…"}
+            value={designPrompt}
+            onChange={(event) => setDesignPrompt(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void submitDesignPrompt();
+              }
+            }}
+          />
+          {dictationError ? <div className="browser-design-composer__error" role="alert">{dictationError}</div> : null}
+          <div className="browser-design-composer__footer">
+            <div className="browser-design-composer__tools">
+              <div className="browser-design-composer__skills-wrap">
+                <button type="button" className="browser-design-composer__tool" aria-expanded={skillsOpen} onClick={() => setSkillsOpen((open) => !open)}>+ Skill</button>
+                {skillsOpen ? (
+                  <div className="browser-design-composer__skills" data-testid="browser-design-skills">
+                    {skillCommands.length ? skillCommands.map((skill) => (
+                      <button key={skill.id} type="button" onClick={() => {
+                        setDesignPrompt((current) => `${skill.command}${current ? ` ${current}` : ""}`);
+                        setSkillsOpen(false);
+                      }}>
+                        <span>{skill.title}</span>{skill.sourceLabel ? <small>{skill.sourceLabel}</small> : null}
+                      </button>
+                    )) : <span>No session skills available</span>}
+                  </div>
+                ) : null}
+              </div>
+              <div className="browser-design-composer__model">{modelControl}</div>
+            </div>
+            <div className="browser-design-composer__actions">
+              <button type="button" className={`browser-design-composer__mic${dictating ? " browser-design-composer__mic--active" : ""}`} aria-label={dictating ? "Stop dictation" : "Start dictation"} onClick={toggleDictation}><MicrophoneIcon /></button>
+              <button type="button" className="browser-design-composer__send" aria-label={sessionRunning ? "Send follow-up" : "Send design prompt"} disabled={!designPrompt.trim() || submittingPrompt} onClick={() => void submitDesignPrompt()}>↑</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -445,4 +559,41 @@ interface BrowserPanelApi {
   readonly openBrowserExternal?: () => Promise<void>;
   readonly openExternal?: (url: string) => Promise<void>;
   readonly onBrowserStateChanged?: (listener: (state: BrowserStateSnapshot) => void) => () => void;
+}
+
+interface BrowserSpeechRecognitionResult {
+  readonly isFinal: boolean;
+  readonly 0?: { readonly transcript?: string };
+}
+
+interface BrowserSpeechRecognitionEvent {
+  readonly resultIndex: number;
+  readonly results: ArrayLike<BrowserSpeechRecognitionResult>;
+}
+
+interface BrowserSpeechRecognition {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: { readonly error: string }) => void) | null;
+  onend: (() => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+function getSpeechRecognitionConstructor(): (new () => BrowserSpeechRecognition) | undefined {
+  const speechWindow = window as typeof window & {
+    SpeechRecognition?: new () => BrowserSpeechRecognition;
+    webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+  };
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+}
+
+function SelectionCursorIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 18 18"><path d="M3 2.5v10.8l3.1-2 2 4.1 2.1-1-2-4.1 3.6-.5L3 2.5Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.4" /></svg>;
+}
+
+function MicrophoneIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20"><rect x="7" y="3" width="6" height="9" rx="3" fill="none" stroke="currentColor" strokeWidth="1.5"/><path d="M4.8 9.5a5.2 5.2 0 0 0 10.4 0M10 14.7V18M7.5 18h5" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5"/></svg>;
 }

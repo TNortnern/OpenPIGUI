@@ -37,6 +37,8 @@ mac:
     - target: zip
       arch: arm64
   darkModeSupport: true
+  extendInfo:
+    NSMicrophoneUsageDescription: Voice dictation turns your speech into prompts inside pi-gui.
   extraFiles:
     - from: build/native/pi-gui-notification-status-helper
       to: MacOS/pi-gui-notification-status-helper

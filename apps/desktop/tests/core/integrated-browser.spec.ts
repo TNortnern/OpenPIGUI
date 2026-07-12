@@ -111,6 +111,30 @@ test("browses deterministic HTTP in the right rail with bounds below chrome", as
     expect(designState?.designMode).toBe(false);
     expect(designState?.selectedElement?.text).toBe("PI_BROWSER_OK");
     expect(designState?.selectedElement?.attributes["data-testid"]).toBe("fixture-heading");
+    await expect(window.getByTestId("browser-design-composer")).toBeVisible();
+    await expect(window.getByTestId("browser-design-prompt")).toBeVisible();
+
+    await window.evaluate(() => {
+      class MockSpeechRecognition {
+        continuous = false;
+        interimResults = false;
+        lang = "en-US";
+        onresult: ((event: unknown) => void) | null = null;
+        onerror: ((event: unknown) => void) | null = null;
+        onend: (() => void) | null = null;
+        start() {
+          this.onresult?.({ resultIndex: 0, results: [{ 0: { transcript: "make this heading warmer" }, isFinal: true }] });
+          this.onend?.();
+        }
+        stop() { this.onend?.(); }
+      }
+      Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: MockSpeechRecognition });
+    });
+    await window.getByRole("button", { name: "Start dictation" }).click();
+    await expect(window.getByTestId("browser-design-prompt")).toHaveValue("make this heading warmer");
+
+    await window.getByRole("button", { name: "+ Skill" }).click();
+    await expect(window.getByTestId("browser-design-skills")).toBeVisible();
 
     // Mode switch hides the native view.
     await window.getByLabel("Toggle terminal").click();

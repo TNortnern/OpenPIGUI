@@ -7,6 +7,7 @@ import {
   Menu,
   nativeImage,
   net,
+  session,
   shell,
   type IpcMainInvokeEvent,
   type MenuItemConstructorOptions,
@@ -1041,6 +1042,22 @@ app.on("second-instance", () => {
 });
 
 app.whenReady().then(async () => {
+  session.defaultSession.setPermissionCheckHandler((webContents, permission, _origin, details) => {
+    if (permission !== "media" || !webContents) return false;
+    const owningWindow = BrowserWindow.fromWebContents(webContents);
+    return Boolean(owningWindow && appWindows.has(owningWindow) && details.mediaType === "audio");
+  });
+  session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
+    const owningWindow = BrowserWindow.fromWebContents(webContents);
+    const mediaTypes = ("mediaTypes" in details ? details.mediaTypes : undefined) ?? [];
+    callback(Boolean(
+      permission === "media" &&
+      owningWindow &&
+      appWindows.has(owningWindow) &&
+      mediaTypes.length > 0 &&
+      mediaTypes.every((type: string) => type === "audio")
+    ));
+  });
   if (!hasSingleInstanceLock) {
     return;
   }

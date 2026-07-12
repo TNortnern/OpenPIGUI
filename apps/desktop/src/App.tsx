@@ -29,6 +29,7 @@ import {
   type PiDesktopCommand,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
+import { ModelSelector } from "./model-selector";
 import { SkillsView } from "./skills-view";
 import { ExtensionsView } from "./extensions-view";
 import { SettingsView, type SettingsSection } from "./settings-view";
@@ -1720,6 +1721,17 @@ export default function App() {
     focusComposer();
   };
 
+  const submitBrowserDesignPrompt = async (prompt: string): Promise<void> => {
+    if (!selectedSession || !prompt.trim() || selectedSessionModelOnboarding.requiresModelSelection) return;
+    rememberComposerHistory(selectedSessionKey, prompt);
+    await updateSnapshot(api, setSnapshot, () =>
+      api.submitComposer(
+        prompt,
+        selectedSession.status === "running" ? { deliverAs: "followUp" } : undefined,
+      ),
+    );
+  };
+
   const rightRailBody =
     selectedWorkspace && selectedSession && isRightRailOpen ? (
       rightRailMode === "terminal" ? (
@@ -1743,6 +1755,33 @@ export default function App() {
               browserUrl: url,
             }));
           }}
+          sessionRunning={selectedSession.status === "running"}
+          skillCommands={slashMenu.slashSections
+            .flatMap((section) => section.items)
+            .filter((command) => command.section === "runtime")
+            .map((command) => ({ id: command.id, title: command.title, command: command.command, sourceLabel: command.sourceLabel }))}
+          modelControl={(
+            <ModelSelector
+              runtime={selectedModelRuntime}
+              provider={resolvedSessionProvider}
+              modelId={resolvedSessionModelId}
+              thinkingLevel={resolvedSessionThinkingLevel}
+              disabled={selectedSession.status === "running"}
+              unselectedModelLabel={selectedSessionModelOnboarding.unselectedModelLabel}
+              emptyModelTitle={selectedSessionModelOnboarding.emptyModelTitle}
+              onSetModel={(provider, modelId) => {
+                void updateSnapshot(api, setSnapshot, () => api.setSessionModel(selectedWorkspace.id, selectedSession.id, provider, modelId));
+              }}
+              onSetThinking={(thinkingLevel) => {
+                void updateSnapshot(api, setSnapshot, () => api.setSessionThinkingLevel(
+                  selectedWorkspace.id,
+                  selectedSession.id,
+                  thinkingLevel as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
+                ));
+              }}
+            />
+          )}
+          onSubmitDesignPrompt={submitBrowserDesignPrompt}
         />
       ) : rightRailMode === "changes" || rightRailMode === "files" ? (
         <DiffPanel

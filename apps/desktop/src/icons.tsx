@@ -28,10 +28,10 @@ export function TerminalIcon() {
 export function BrowserPreviewIcon() {
   return (
     <Icon>
-      <rect x="3.1" y="4.1" width="13.8" height="11.8" rx="2" stroke="currentColor" strokeWidth="1.35" />
-      <path d="M3.4 7.4h13.2" stroke="currentColor" strokeLinecap="round" strokeWidth="1.35" />
-      <path d="M6 5.75h.02M8.15 5.75h.02" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-      <path d="m8.1 10.1 1.8 1.8 3.5-3.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.45" />
+      <rect x="2.8" y="3.5" width="14.4" height="12.8" rx="2.4" stroke="currentColor" strokeWidth="1.35" />
+      <path d="M3.1 7h13.8M5.4 5.25h.02M7.55 5.25h.02" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
+      <path d="m7.1 9 5.9 4.6-2.7.35-1.2 2.2L7.1 9Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.25" />
+      <path d="m13.8 8 .35-.9.35.9.9.35-.9.35-.35.9-.35-.9-.9-.35.9-.35Z" fill="currentColor" />
     </Icon>
   );
 }
