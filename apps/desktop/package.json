@@ -4,7 +4,7 @@
   "version": "0.1.0-beta.33",
   "author": "Trayvon Northern",
   "license": "MIT",
-  "description": "OpenPIGUI — Codex-style desktop shell for pi",
+  "description": "OpenPIGUI \u2014 Codex-style desktop shell for pi",
   "main": "out/main/main.js",
   "scripts": {
     "build:deps": "pnpm --dir ../.. --filter @pi-gui/session-driver --filter @pi-gui/pi-sdk-driver --filter @pi-gui/catalogs run build",
@@ -41,6 +41,7 @@
     "test:pure:composer-skill-tokens": "node --experimental-strip-types scripts/run-composer-skill-tokens-tests.mts",
     "test:pure:composer-context-blocks": "node --experimental-strip-types scripts/run-composer-context-blocks-tests.mts",
     "test:pure:composer-context-usage": "node --experimental-strip-types scripts/run-composer-context-usage-tests.mts",
+    "test:pure:session-row-pointer": "node --experimental-strip-types scripts/run-session-row-pointer-tests.mts",
     "test:pure:thinking-options": "node --experimental-strip-types scripts/run-thinking-options-tests.mts",
     "test:pure:multitask-status": "node --experimental-strip-types scripts/run-multitask-status-tests.mts",
     "test:pure:optimistic-composer": "node --experimental-strip-types scripts/run-optimistic-composer-tests.mts",

@@ -1,4 +1,4 @@
-import { forwardRef, useState, type CSSProperties } from "react";
+import { forwardRef, useRef, useState, type CSSProperties } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -26,6 +26,7 @@ import {
   COMPOSER_THREAD_MIME,
   serializeThreadDropPayload,
 } from "./composer-context-blocks";
+import { isSessionRowClick } from "./session-row-pointer";
 
 interface SidebarProps {
   readonly activeView: AppView;
@@ -862,6 +863,11 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(funct
   // dnd-kit owns pointer gestures on pinned sortable rows; HTML5 drag is for
   // composer context drops from ordinary thread rows.
   const canDragToComposer = !dragListeners && !overlay;
+  // Native `draggable` on a parent of <button> swallows click; arm select on
+  // pointerup when movement stayed under the click threshold, and only treat
+  // the gesture as a composer drag once HTML5 dragstart actually fires.
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const didComposerDragRef = useRef(false);
   return (
     <div
       ref={ref}
@@ -870,33 +876,77 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(funct
       data-sidebar-indicator={indicatorVariant}
       data-session-pinned={pinned ? "true" : "false"}
       data-session-id={thread.session.id}
-      draggable={canDragToComposer}
-      onDragStart={
-        canDragToComposer
-          ? (event) => {
-              // Ignore drags that begin on action buttons (pin/archive).
-              const target = event.target;
-              if (target instanceof Element && target.closest(".session-row__action")) {
-                event.preventDefault();
-                return;
-              }
-              const payload = serializeThreadDropPayload({
-                workspaceId: thread.workspaceId,
-                sessionId: thread.session.id,
-                title: thread.session.title,
-                ...(thread.session.preview ? { preview: thread.session.preview } : {}),
-              });
-              event.dataTransfer.setData(COMPOSER_THREAD_MIME, payload);
-              event.dataTransfer.setData("text/plain", thread.session.title);
-              event.dataTransfer.effectAllowed = "copy";
-            }
-          : undefined
-      }
+      data-composer-draggable={canDragToComposer ? "true" : "false"}
     >
       <button
-        className="session-row__select"
-        onClick={onSelect}
+        className={`session-row__select${canDragToComposer ? " session-row__select--composer-draggable" : ""}`}
         type="button"
+        draggable={canDragToComposer}
+        onPointerDown={
+          canDragToComposer
+            ? (event) => {
+                if (event.button !== 0) {
+                  return;
+                }
+                pointerStartRef.current = { x: event.clientX, y: event.clientY };
+                didComposerDragRef.current = false;
+              }
+            : undefined
+        }
+        onPointerUp={
+          canDragToComposer
+            ? (event) => {
+                if (event.button !== 0 || didComposerDragRef.current) {
+                  pointerStartRef.current = null;
+                  return;
+                }
+                const start = pointerStartRef.current;
+                pointerStartRef.current = null;
+                if (isSessionRowClick(start, { x: event.clientX, y: event.clientY })) {
+                  onSelect();
+                }
+              }
+            : undefined
+        }
+        onDragStart={
+          canDragToComposer
+            ? (event) => {
+                didComposerDragRef.current = true;
+                const payload = serializeThreadDropPayload({
+                  workspaceId: thread.workspaceId,
+                  sessionId: thread.session.id,
+                  title: thread.session.title,
+                  ...(thread.session.preview ? { preview: thread.session.preview } : {}),
+                });
+                event.dataTransfer.setData(COMPOSER_THREAD_MIME, payload);
+                event.dataTransfer.setData("text/plain", thread.session.title);
+                event.dataTransfer.effectAllowed = "copy";
+              }
+            : undefined
+        }
+        onDragEnd={
+          canDragToComposer
+            ? () => {
+                pointerStartRef.current = null;
+              }
+            : undefined
+        }
+        onClick={
+          canDragToComposer
+            ? (event) => {
+                // Mouse selection is handled on pointerup. Keyboard activation
+                // (detail === 0) still selects here. Ignore post-drag clicks.
+                if (didComposerDragRef.current) {
+                  didComposerDragRef.current = false;
+                  return;
+                }
+                if (event.detail !== 0) {
+                  return;
+                }
+                onSelect();
+              }
+            : onSelect
+        }
         {...dragAttributes}
         {...dragListeners}
       >

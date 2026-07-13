@@ -646,11 +646,11 @@
   position: relative;
 }
 
-.session-row[draggable="true"] {
+.session-row__select--composer-draggable {
   cursor: grab;
 }
 
-.session-row[draggable="true"]:active {
+.session-row__select--composer-draggable:active {
   cursor: grabbing;
 }
 
