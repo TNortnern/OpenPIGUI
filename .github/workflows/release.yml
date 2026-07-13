@@ -32,9 +32,18 @@ jobs:
         run: pnpm typecheck
 
       - name: Check mac code signing material
+        env:
+          ALLOW_UNSIGNED_MAC_RELEASE: ${{ secrets.ALLOW_UNSIGNED_MAC_RELEASE }}
         run: |
           if [ -z "${{ secrets.CSC_LINK }}" ]; then
-            echo "::warning::CSC_LINK is unset; mac artifacts may be unsigned and auto-update zip publishing can fail Gatekeeper checks."
+            if [ "${ALLOW_UNSIGNED_MAC_RELEASE}" = "true" ]; then
+              echo "::warning::CSC_LINK unset; ALLOW_UNSIGNED_MAC_RELEASE=true — packaging unsigned mac artifacts (Gatekeeper will block first launch)."
+            else
+              echo "::error::CSC_LINK is unset. Public mac releases require Developer ID signing + notarization."
+              echo "::error::Configure repo secrets: CSC_LINK, CSC_KEY_PASSWORD, APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER."
+              echo "::error::Emergency unsigned publish only: set secret ALLOW_UNSIGNED_MAC_RELEASE=true (users must right-click Open / xattr -cr)."
+              exit 1
+            fi
           fi
 
       - name: Verify install copy
@@ -101,6 +110,29 @@ jobs:
             apps/desktop/release/latest-mac.yml
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
+
+      - name: Document Gatekeeper bypass when unsigned
+        if: ${{ env.HAS_MAC_SIGNING != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES=$(mktemp)
+          {
+            gh release view "${GITHUB_REF_NAME}" --json body -q .body
+            echo ""
+            echo "## macOS Gatekeeper (unsigned build)"
+            echo ""
+            echo "This macOS build was **not** Developer ID–signed/notarized. On first launch macOS may say Apple could not verify the app."
+            echo ""
+            echo "**Open anyway:** Control-click \`OpenPIGUI.app\` → **Open** → confirm **Open**."
+            echo ""
+            echo "Or clear quarantine after installing to Applications:"
+            echo ""
+            echo '```bash'
+            echo "xattr -cr /Applications/OpenPIGUI.app"
+            echo '```'
+          } > "$NOTES"
+          gh release edit "${GITHUB_REF_NAME}" --notes-file "$NOTES"
 
       - name: Smoke test the packaged release zip
         # Unsigned CI builds often hang under Gatekeeper; publish assets first so

@@ -59,7 +59,7 @@ Packaged production builds check GitHub Releases through a narrow main-process u
 
 | Platform | Updater artifact | Notes |
 | --- | --- | --- |
-| macOS (Apple Silicon) | Signed ZIP + `latest-mac.yml` + `.zip.blockmap` | Primary auto-update surface. Release CI requires `CSC_LINK` and notarizes when App Store Connect API secrets are configured. |
+| macOS (Apple Silicon) | ZIP + `latest-mac.yml` + `.zip.blockmap` (signed/notarized when secrets exist) | Primary auto-update surface. Release CI **fails** without `CSC_LINK` unless `ALLOW_UNSIGNED_MAC_RELEASE=true`. Notarizes when `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` are set. Unsigned builds need Gatekeeper bypass (right-click Open or `xattr -cr`). |
 | Windows | NSIS installer + `latest.yml` + `.exe.blockmap` | Supported when NSIS metadata is present on the release. |
 | Linux | AppImage + `latest-linux*.yml` + `.AppImage.zsync` | Supported when AppImage metadata is present on the release. |
 | Other formats (DMG, portable EXE, unpacked builds) | Manual download fallback | These install paths are not wired to electron-updater; use the GitHub release asset directly. |

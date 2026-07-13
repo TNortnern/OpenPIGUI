@@ -45,7 +45,31 @@ Direct release: [v0.1.0-beta.38](https://github.com/TNortnern/OpenPIGUI/releases
 
 1. Open the `.dmg` and drag `OpenPIGUI.app` into `/Applications`.
 2. Launch **OpenPIGUI** from Applications or Spotlight.
-3. If macOS Gatekeeper blocks the first launch (unsigned/unnotarized builds during beta), right-click the app → **Open** → confirm **Open**.
+3. **Gatekeeper (beta.38 and other unsigned builds):** macOS may show *“Apple could not verify OpenPIGUI.app…”* because public betas are not Developer ID–signed/notarized until Apple signing secrets are configured in CI. That is expected, not malware.
+
+   **Unblock (pick one):**
+   - Finder: Control-click (right-click) `OpenPIGUI.app` → **Open** → confirm **Open**.
+   - Terminal (clears quarantine after install):
+
+     ```bash
+     xattr -cr /Applications/OpenPIGUI.app
+     ```
+
+     Then open the app again from Applications.
+
+### macOS signing secrets (maintainers)
+
+Public macOS downloads only clear Gatekeeper without the bypass above when release CI has:
+
+| Secret | Purpose |
+| --- | --- |
+| `CSC_LINK` | Base64 Developer ID Application certificate (`.p12`) or path/URL electron-builder accepts |
+| `CSC_KEY_PASSWORD` | Password for that `.p12` |
+| `APPLE_API_KEY` | App Store Connect API key `.p8` contents (notarization) |
+| `APPLE_API_KEY_ID` | Key ID |
+| `APPLE_API_ISSUER` | Issuer UUID |
+
+Until those exist, tagged mac releases either fail (default) or, with `ALLOW_UNSIGNED_MAC_RELEASE=true`, publish unsigned DMGs and must document this Gatekeeper bypass in the release notes.
 
 **Linux**
 
