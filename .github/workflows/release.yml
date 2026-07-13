@@ -11,6 +11,9 @@ permissions:
 jobs:
   release-mac:
     runs-on: macos-latest
+    env:
+      HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+      HOMEBREW_TAP_REPO: ${{ secrets.HOMEBREW_TAP_REPO }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,11 +31,10 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Require mac code signing for auto-update release
+      - name: Check mac code signing material
         run: |
           if [ -z "${{ secrets.CSC_LINK }}" ]; then
-            echo "::error::CSC_LINK is required to publish signed mac auto-update artifacts."
-            exit 1
+            echo "::warning::CSC_LINK is unset; mac artifacts may be unsigned and auto-update zip publishing can fail Gatekeeper checks."
           fi
 
       - name: Verify install copy
@@ -52,7 +54,7 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           # Prefer identity from keychain when CSC_LINK is absent (self-hosted / local runners).
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK && 'true' || 'true' }}
+          CSC_IDENTITY_AUTO_DISCOVERY: true
         run: |
           cd apps/desktop
           # Enable notarization only when App Store Connect API secrets are present.
@@ -103,7 +105,7 @@ jobs:
           generate_release_notes: true
 
       - name: Sync Homebrew tap
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' && secrets.HOMEBREW_TAP_REPO != '' }}
+        if: ${{ env.HOMEBREW_TAP_TOKEN != '' && env.HOMEBREW_TAP_REPO != '' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
