@@ -6,7 +6,19 @@ import type {
   RuntimeSnapshot,
 } from "@pi-gui/session-driver/runtime-types";
 import type { ExtensionCommandCompatibilityRecord } from "./desktop-state";
+import { isLoginSlashProvider } from "./login-slash-providers";
 import { titleCase } from "./string-utils";
+import {
+  THINKING_OPTIONS as THINKING_OPTION_CATALOG,
+  modelSupportsThinkingSelector,
+  thinkingLevelsForModel,
+  thinkingOptionsForModel as thinkingOptionsForModelBase,
+} from "./thinking-options";
+
+export {
+  modelSupportsThinkingSelector,
+  thinkingLevelsForModel,
+} from "./thinking-options";
 
 export type ComposerSlashCommandKind =
   | "runtime"
@@ -134,7 +146,7 @@ const HOST_ACTION_SLASH_COMMANDS: readonly ComposerSlashCommand[] = [
     command: "/login",
     template: "/login",
     title: "Login",
-    description: "Authenticate a provider for this workspace",
+    description: "Sign in with OAuth or set an API key",
     submitMode: "pick-option",
     section: "host",
   },
@@ -210,33 +222,15 @@ const HOST_ACTION_SLASH_COMMANDS: readonly ComposerSlashCommand[] = [
   },
 ] as const;
 
-export const THINKING_OPTIONS: readonly ComposerSlashOption[] = [
-  {
-    value: "low",
-    label: "Low",
-    description: "Fast responses with lighter reasoning",
-  },
-  {
-    value: "medium",
-    label: "Medium",
-    description: "Balances speed and reasoning depth for everyday tasks",
-  },
-  {
-    value: "high",
-    label: "High",
-    description: "Greater reasoning depth for complex problems",
-  },
-  {
-    value: "xhigh",
-    label: "Extra High",
-    description: "Extra high reasoning depth for complex problems",
-  },
-  {
-    value: "max",
-    label: "Max",
-    description: "Maximum reasoning depth for supported models",
-  },
-] as const;
+export const THINKING_OPTIONS: readonly ComposerSlashOption[] = THINKING_OPTION_CATALOG;
+
+export function thinkingOptionsForModel(
+  runtime: RuntimeSnapshot | undefined,
+  provider: string | undefined,
+  modelId: string | undefined,
+): readonly ComposerSlashOption[] {
+  return thinkingOptionsForModelBase(runtime, provider, modelId);
+}
 
 export function buildSlashCommandSections(
   query: string,
@@ -418,19 +412,24 @@ export function buildModelOptions(
 export function slashOptionsForCommand(
   command: ComposerSlashCommand | undefined,
   runtime?: RuntimeSnapshot,
+  selection?: {
+    readonly provider?: string;
+    readonly modelId?: string;
+  },
 ): readonly ComposerSlashOption[] {
   if (!command) {
     return [];
   }
 
   if (command.kind === "thinking") {
-    return THINKING_OPTIONS;
+    return thinkingOptionsForModel(runtime, selection?.provider, selection?.modelId);
   }
   if (command.kind === "model") {
     return buildModelOptions(runtime);
   }
   if (command.kind === "login") {
-    return buildProviderOptions(runtime?.providers ?? [], (provider) => provider.oauthSupported);
+    // Match pi's /login: OAuth subscriptions and API-key providers (e.g. cursor via pi-cursor-sdk).
+    return buildProviderOptions(runtime?.providers ?? [], isLoginSlashProvider);
   }
   if (command.kind === "logout") {
     return buildProviderOptions(

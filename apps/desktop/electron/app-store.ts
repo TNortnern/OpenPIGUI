@@ -10,6 +10,7 @@ import {
   PiSdkDriver,
   type PiSdkDriverConfig,
   SessionLeasedError,
+  type SessionContextUsage,
   type SessionSchemaInfo,
   sessionKey,
 } from "@pi-gui/pi-sdk-driver";
@@ -171,6 +172,12 @@ export class DesktopAppStore implements AppStoreInternals {
   /** Cached session schema info (version-skew flag) projected onto the transcript payload. */
   private readonly sessionSchemaInfoCache = new Map<string, SessionSchemaInfo>();
   private readonly sessionSchemaInfoInFlight = new Set<string>();
+  /** Cached context usage for the selected session; refreshed on each transcript publish. */
+  private readonly sessionContextUsageCache = new Map<string, SessionContextUsage | undefined>();
+  private readonly sessionContextUsageInFlight = new Set<string>();
+  /** Last successful workspace catalog sync (path → epoch ms). Skips re-scanning sessions briefly. */
+  private readonly lastWorkspaceSyncAt = new Map<string, number>();
+  private static readonly WORKSPACE_SYNC_TTL_MS = 30_000;
   readonly driver: PiSdkDriver;
   readonly catalogStore: JsonCatalogStore;
   readonly worktreeManager: GitWorktreeManager;
@@ -562,7 +569,10 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async submitComposer(
     textInput: string,
-    options?: { readonly deliverAs?: "steer" | "followUp" },
+    options?: {
+      readonly deliverAs?: "steer" | "followUp";
+      readonly clientMessageId?: string;
+    },
   ): Promise<DesktopAppState> {
     return composer.submitComposer(this, textInput, options);
   }
@@ -1295,23 +1305,49 @@ export class DesktopAppStore implements AppStoreInternals {
       if (selectedWorkspaceId && !this.runtimeByWorkspace.has(selectedWorkspaceId)) {
         await this.ensureRuntimeLoaded(selectedWorkspaceId, workspacesSnapshot.workspaces);
       }
+      // Preload other workspace runtimes in the background — don't block project open on them.
       const secondaryWorkspacesToLoad = workspacesSnapshot.workspaces
         .filter((workspace) => workspace.workspaceId !== selectedWorkspaceId)
         .filter((workspace) => !this.runtimeByWorkspace.has(workspace.workspaceId));
-      const secondaryRuntimeLoads = await Promise.allSettled(
-        secondaryWorkspacesToLoad.map((workspace) => this.ensureRuntimeLoaded(workspace.workspaceId, workspacesSnapshot.workspaces)),
-      );
-      secondaryRuntimeLoads.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          return;
-        }
-        const failedWorkspace = secondaryWorkspacesToLoad[index];
-        console.warn(
-          `[pi-gui] Failed to preload runtime for ${failedWorkspace?.path ?? "unknown workspace"}: ${
-            result.reason instanceof Error ? result.reason.message : String(result.reason)
-          }`,
-        );
-      });
+      if (secondaryWorkspacesToLoad.length > 0) {
+        void Promise.allSettled(
+          secondaryWorkspacesToLoad.map((workspace) =>
+            this.ensureRuntimeLoaded(workspace.workspaceId, workspacesSnapshot.workspaces),
+          ),
+        ).then(async (results) => {
+          let loadedAny = false;
+          results.forEach((result, index) => {
+            if (result.status === "fulfilled") {
+              loadedAny = true;
+              return;
+            }
+            const failedWorkspace = secondaryWorkspacesToLoad[index];
+            console.warn(
+              `[pi-gui] Failed to preload runtime for ${failedWorkspace?.path ?? "unknown workspace"}: ${
+                result.reason instanceof Error ? result.reason.message : String(result.reason)
+              }`,
+            );
+          });
+          if (!loadedAny) {
+            return;
+          }
+          try {
+            const runtimeByWorkspace = await this.serializeRuntimeStateForCurrentWorkspaces();
+            this.state = {
+              ...this.state,
+              runtimeByWorkspace,
+              revision: this.state.revision + 1,
+            };
+            this.emit();
+          } catch (error) {
+            console.warn(
+              `[pi-gui] Failed to publish secondary runtime preload: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        });
+      }
       for (const runtime of this.runtimeByWorkspace.values()) {
         pruneCompatibilityForRuntimeSnapshot(this.extensionCommandCompatibilityByWorkspace, runtime);
       }
@@ -2602,12 +2638,18 @@ export class DesktopAppStore implements AppStoreInternals {
 
   private buildSelectedTranscriptRecord(sessionRef: SessionRef): SelectedTranscriptRecord {
     this.ensureSessionSchemaInfo(sessionRef);
+    this.ensureSessionContextUsage(sessionRef);
     const schemaInfo = this.sessionSchemaInfoCache.get(sessionKey(sessionRef));
+    const key = sessionKey(sessionRef);
+    const contextUsage = this.sessionContextUsageCache.has(key)
+      ? this.sessionContextUsageCache.get(key)
+      : undefined;
     return {
       workspaceId: sessionRef.workspaceId,
       sessionId: sessionRef.sessionId,
-      transcript: (this.sessionState.transcriptCache.get(sessionKey(sessionRef)) ?? []).map(cloneTranscriptMessage),
+      transcript: (this.sessionState.transcriptCache.get(key) ?? []).map(cloneTranscriptMessage),
       ...(schemaInfo ? { schemaInfo } : {}),
+      ...(contextUsage ? { contextUsage } : {}),
     };
   }
 
@@ -2638,6 +2680,34 @@ export class DesktopAppStore implements AppStoreInternals {
       })
       .finally(() => {
         this.sessionSchemaInfoInFlight.delete(key);
+      });
+  }
+
+  /**
+   * Refresh live context usage for the selected session. Unlike schema info, this
+   * re-fetches even when cached so totals stay current after turns/compactions.
+   * Concurrent publishes coalesce via the in-flight set.
+   */
+  private ensureSessionContextUsage(sessionRef: SessionRef): void {
+    const key = sessionKey(sessionRef);
+    if (this.sessionContextUsageInFlight.has(key)) {
+      return;
+    }
+    this.sessionContextUsageInFlight.add(key);
+    void this.driver
+      .getContextUsage(sessionRef)
+      .then((usage) => {
+        const previous = this.sessionContextUsageCache.get(key);
+        this.sessionContextUsageCache.set(key, usage);
+        if (!contextUsageEquals(previous, usage)) {
+          this.publishSelectedTranscriptFor(sessionRef);
+        }
+      })
+      .catch((error) => {
+        console.error(`[app-store] failed to read context usage for ${key}`, error);
+      })
+      .finally(() => {
+        this.sessionContextUsageInFlight.delete(key);
       });
   }
 
@@ -2757,6 +2827,129 @@ export class DesktopAppStore implements AppStoreInternals {
       this.publishSelectedTranscript();
     }
     return snapshot;
+  }
+
+  applyFastWorkspaceSelection(options: {
+    readonly selectedWorkspaceId: string;
+    readonly selectedSessionId: string;
+    readonly activeView?: AppView;
+  }): DesktopAppState {
+    const sessionRef =
+      options.selectedWorkspaceId && options.selectedSessionId
+        ? { workspaceId: options.selectedWorkspaceId, sessionId: options.selectedSessionId }
+        : undefined;
+    if (sessionRef) {
+      this.restoredSelectedSessionKeysAwaitingSelection.delete(sessionKey(sessionRef));
+    }
+    this.state = {
+      ...this.state,
+      selectedWorkspaceId: options.selectedWorkspaceId,
+      selectedSessionId: options.selectedSessionId,
+      activeView: options.activeView ?? "threads",
+      composerDraft: this.resolveComposerDraft(options.selectedWorkspaceId, options.selectedSessionId),
+      composerDraftSyncSource: "selection",
+      composerDraftSyncNonce: this.allocateComposerDraftSyncNonce(),
+      composerAttachments: this.resolveComposerAttachments(options.selectedWorkspaceId, options.selectedSessionId),
+      lastError: undefined,
+      revision: this.state.revision + 1,
+    };
+    if (sessionRef && this.state.activeView === "threads") {
+      this.markSessionViewed(sessionRef);
+    }
+    this.schedulePersistUiState();
+    const snapshot = this.emit();
+    if (sessionRef && this.sessionState.loadedTranscriptKeys.has(sessionKey(sessionRef))) {
+      this.publishSelectedTranscript();
+    }
+    return snapshot;
+  }
+
+  markWorkspaceSynced(path: string): void {
+    this.lastWorkspaceSyncAt.set(path, Date.now());
+  }
+
+  private shouldSyncWorkspace(path: string): boolean {
+    const last = this.lastWorkspaceSyncAt.get(path);
+    if (last === undefined) {
+      return true;
+    }
+    return Date.now() - last >= DesktopAppStore.WORKSPACE_SYNC_TTL_MS;
+  }
+
+  scheduleWorkspaceHydration(options: {
+    readonly workspaceId: string;
+    readonly sessionId: string;
+    readonly path: string;
+    readonly displayName: string;
+    readonly refreshWorktrees?: boolean;
+    readonly skipSync?: boolean;
+  }): void {
+    const selectionEpoch = ++this.selectionEpoch;
+    void this.runWorkspaceHydration(options, selectionEpoch).catch((error: unknown) => {
+      console.error(`[app-store] workspace hydration failed for ${options.path}`, error);
+      if (
+        selectionEpoch === this.selectionEpoch &&
+        this.state.selectedWorkspaceId === options.workspaceId
+      ) {
+        void this.withError(error);
+      }
+    });
+  }
+
+  private async runWorkspaceHydration(
+    options: {
+      readonly workspaceId: string;
+      readonly sessionId: string;
+      readonly path: string;
+      readonly displayName: string;
+      readonly refreshWorktrees?: boolean;
+      readonly skipSync?: boolean;
+    },
+    selectionEpoch: number,
+  ): Promise<void> {
+    if (!options.skipSync && this.shouldSyncWorkspace(options.path)) {
+      await this.driver.syncWorkspace(options.path, options.displayName);
+      this.markWorkspaceSynced(options.path);
+    }
+
+    if (selectionEpoch !== this.selectionEpoch || this.state.selectedWorkspaceId !== options.workspaceId) {
+      return;
+    }
+
+    await this.refreshState({
+      selectedWorkspaceId: options.workspaceId,
+      selectedSessionId: options.sessionId || this.state.selectedSessionId,
+      clearLastError: true,
+      refreshWorktrees: options.refreshWorktrees === true,
+      hydrateSelectedSession: false,
+      activeView: this.state.activeView,
+    });
+
+    if (selectionEpoch !== this.selectionEpoch || this.state.selectedWorkspaceId !== options.workspaceId) {
+      return;
+    }
+
+    const sessionId = this.state.selectedSessionId || options.sessionId;
+    if (!sessionId) {
+      // Still need runtime for empty workspaces (new-thread model picker).
+      if (!this.runtimeByWorkspace.has(options.workspaceId)) {
+        await this.ensureRuntimeLoaded(options.workspaceId);
+        if (selectionEpoch === this.selectionEpoch && this.state.selectedWorkspaceId === options.workspaceId) {
+          this.state = {
+            ...this.state,
+            runtimeByWorkspace: await this.serializeRuntimeStateForCurrentWorkspaces(),
+            revision: this.state.revision + 1,
+          };
+          this.emit();
+        }
+      }
+      return;
+    }
+
+    this.startSelectedSessionHydration(
+      { workspaceId: options.workspaceId, sessionId },
+      { markViewed: this.state.activeView === "threads" },
+    );
   }
 
   private async hydrateSelectedSessionAfterSelection(
@@ -3363,4 +3556,20 @@ function resolveSelectedSessionIdFromCatalog(
     return preferredSessionId;
   }
   return workspaceSessions[0]?.sessionRef.sessionId ?? "";
+}
+
+function contextUsageEquals(
+  left: SessionContextUsage | undefined,
+  right: SessionContextUsage | undefined,
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  if (!left || !right) {
+    return false;
+  }
+  return left.tokens === right.tokens
+    && left.contextWindow === right.contextWindow
+    && left.percent === right.percent
+    && left.tokensPerSecond === right.tokensPerSecond;
 }

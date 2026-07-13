@@ -241,6 +241,7 @@ export interface TerminalSessionSnapshot {
   readonly shell: string;
   readonly title: string;
   readonly status: TerminalSessionStatus;
+  readonly startedAt: string;
   readonly replay: string;
   readonly truncated: boolean;
   readonly exitCode?: number;
@@ -444,7 +445,10 @@ export interface PiDesktopApi {
   removeQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   steerQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   updateComposerDraft(composerDraft: string): Promise<DesktopAppState>;
-  submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp" }): Promise<DesktopAppState>;
+  submitComposer(text: string, options?: {
+    readonly deliverAs?: "steer" | "followUp";
+    readonly clientMessageId?: string;
+  }): Promise<DesktopAppState>;
   getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot>;
   navigateSessionTree(
     target: WorkspaceSessionTarget,

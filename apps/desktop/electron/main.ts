@@ -881,6 +881,7 @@ async function addPickedWorkspace(window: BrowserWindow | null | undefined, work
   if (!nextState.selectedWorkspaceId) {
     return nextState;
   }
+  // addWorkspace already switches to new-thread; avoid a second persist/emit round-trip.
   const newThreadState =
     nextState.activeView === "new-thread" ? nextState : await store.setActiveView("new-thread");
   if (window) {
@@ -1519,7 +1520,10 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     desktopIpc.submitComposer,
-    (event, text: string, options?: { readonly deliverAs?: "steer" | "followUp" }) =>
+    (event, text: string, options?: {
+      readonly deliverAs?: "steer" | "followUp";
+      readonly clientMessageId?: string;
+    }) =>
       runWindowScopedForEvent(event, () => store.submitComposer(text, options)),
   );
   ipcMain.handle(desktopIpc.getSessionTree, (_event, target: WorkspaceSessionTarget) =>

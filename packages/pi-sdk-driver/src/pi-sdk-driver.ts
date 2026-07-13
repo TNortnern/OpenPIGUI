@@ -172,6 +172,10 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.getSessionSchemaInfo(sessionRef);
   }
 
+  getContextUsage(sessionRef: SessionRef) {
+    return this.supervisor.getContextUsage(sessionRef);
+  }
+
   generateThreadTitle(workspace: WorkspaceRef, options: GenerateThreadTitleOptions): Promise<string | null> {
     if (this.generateThreadTitleOverride) {
       return Promise.resolve(this.generateThreadTitleOverride(workspace, options)).then((override) =>

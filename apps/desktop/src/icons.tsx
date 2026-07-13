@@ -16,6 +16,33 @@ export function PlusIcon() {
   );
 }
 
+export function SearchIcon() {
+  return (
+    <Icon>
+      <circle cx="9" cy="9" r="5.1" stroke="currentColor" strokeWidth="1.45" />
+      <path d="m12.7 12.7 3.5 3.5" stroke="currentColor" strokeLinecap="round" strokeWidth="1.45" />
+    </Icon>
+  );
+}
+
+export function CheckIcon() {
+  return (
+    <Icon>
+      <path d="m5.2 10.2 3.1 3.1 6.5-6.6" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.7" />
+    </Icon>
+  );
+}
+
+export function SlidersIcon() {
+  return (
+    <Icon>
+      <path d="M4 6.5h12M4 13.5h12" stroke="currentColor" strokeLinecap="round" strokeWidth="1.45" />
+      <circle cx="8" cy="6.5" r="1.7" fill="currentColor" stroke="currentColor" strokeWidth="1.1" />
+      <circle cx="12.5" cy="13.5" r="1.7" fill="currentColor" stroke="currentColor" strokeWidth="1.1" />
+    </Icon>
+  );
+}
+
 export function TerminalIcon() {
   return (
     <Icon>
@@ -70,6 +97,30 @@ export function CloseIcon() {
   return (
     <Icon>
       <path d="m6 6 8 8M14 6l-8 8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.5" />
+    </Icon>
+  );
+}
+
+/** Four-dot grid used for the Working activity pill (Cursor-style). */
+export function WorkingDotsIcon() {
+  return (
+    <Icon>
+      <circle cx="7" cy="7" r="1.35" fill="currentColor" />
+      <circle cx="13" cy="7" r="1.35" fill="currentColor" />
+      <circle cx="7" cy="13" r="1.35" fill="currentColor" />
+      <circle cx="13" cy="13" r="1.35" fill="currentColor" />
+    </Icon>
+  );
+}
+
+export function BranchIcon() {
+  return (
+    <Icon>
+      <circle cx="6" cy="5" r="1.85" stroke="currentColor" strokeWidth="1.45" />
+      <circle cx="6" cy="15" r="1.85" stroke="currentColor" strokeWidth="1.45" />
+      <circle cx="14" cy="10" r="1.85" stroke="currentColor" strokeWidth="1.45" />
+      <path d="M6 6.85v6.3" stroke="currentColor" strokeLinecap="round" strokeWidth="1.45" />
+      <path d="M6 10h6.1" stroke="currentColor" strokeLinecap="round" strokeWidth="1.45" />
     </Icon>
   );
 }
@@ -328,6 +379,21 @@ export function SkillIcon() {
         strokeWidth="1.35"
       />
       <path d="M10 2.8V17.2M4.2 6 10 9.2 15.8 6" stroke="currentColor" strokeWidth="1.2" />
+    </Icon>
+  );
+}
+
+export function MicrophoneIcon() {
+  return (
+    <Icon>
+      <rect x="7" y="3" width="6" height="9" rx="3" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path
+        d="M4.8 9.5a5.2 5.2 0 0 0 10.4 0M10 14.7V18M7.5 18h5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeWidth="1.5"
+      />
     </Icon>
   );
 }

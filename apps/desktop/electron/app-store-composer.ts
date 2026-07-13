@@ -262,6 +262,7 @@ export async function submitComposer(
   options: {
     readonly deliverAs?: "steer" | "followUp";
     readonly allowCommands?: boolean;
+    readonly clientMessageId?: string;
   } = {},
 ): Promise<DesktopAppState> {
   await store.initialize();
@@ -288,6 +289,7 @@ export async function submitComposerToSession(
   options: {
     readonly deliverAs?: "steer" | "followUp";
     readonly allowCommands?: boolean;
+    readonly clientMessageId?: string;
   } = {},
 ): Promise<DesktopAppState> {
   const text = textInput.trim();
@@ -339,7 +341,9 @@ export async function submitComposerToSession(
       const nextMessage = buildQueuedComposerMessage({
         existing: editingState
           ? store.getQueuedComposerMessages(sessionRef).find((message) => message.id === editingState.messageId)
-          : undefined,
+          : options.clientMessageId
+            ? { id: options.clientMessageId }
+            : undefined,
         text,
         attachments,
         mode: deliverAs,
@@ -374,7 +378,9 @@ export async function submitComposerToSession(
       });
     }
 
-    await sendMessageToSession(store, sessionRef, text, attachments);
+    await sendMessageToSession(store, sessionRef, text, attachments, {
+      clientMessageId: options.clientMessageId,
+    });
     const runtimeCommandOutcome = resolvedRuntimeSlashCommand
       ? store.finishRuntimeCommandExecution(sessionRef)
       : undefined;
@@ -467,6 +473,7 @@ export async function sendMessageToSession(
   attachments: readonly ComposerAttachment[],
   options: {
     readonly rollbackOptimisticMessageOnError?: boolean;
+    readonly clientMessageId?: string;
   } = {},
 ): Promise<void> {
   const key = sessionKey(sessionRef);
@@ -482,6 +489,7 @@ export async function sendMessageToSession(
     sessionRef,
     text,
     toTranscriptAttachments(attachments),
+    options.clientMessageId ? { id: options.clientMessageId } : {},
   );
   store.publishSelectedTranscriptFor(sessionRef);
   clearActiveAssistantMessage(store.sessionState.activeAssistantMessageBySession, sessionRef);
@@ -511,7 +519,7 @@ function buildQueuedComposerMessage(options: {
   readonly text: string;
   readonly attachments: readonly ComposerAttachment[];
   readonly mode: "steer" | "followUp";
-  readonly existing?: QueuedComposerMessage;
+  readonly existing?: Pick<QueuedComposerMessage, "id"> & Partial<Pick<QueuedComposerMessage, "createdAt">>;
 }): QueuedComposerMessage {
   const timestamp = new Date().toISOString();
   return {

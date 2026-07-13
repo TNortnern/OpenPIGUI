@@ -1,5 +1,5 @@
 .shell {
-  --sidebar-width: 248px;
+  --sidebar-width: 236px;
   --titlebar-toggle-left: 86px;
   --titlebar-toggle-size: 28px;
   --titlebar-toggle-main-gap: 14px;
@@ -70,6 +70,10 @@
   font-size: 13px;
   font-weight: 520;
   border: 1px solid transparent;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .sidebar__nav-item svg {
@@ -77,7 +81,18 @@
   height: 16px;
 }
 
+.sidebar__nav-item:hover {
+  background: var(--theme-control-hover-bg, var(--surface-overlay-hover));
+  color: var(--text-strong);
+}
+
 .sidebar__nav-item--active {
+  background: var(--theme-selection-bg, var(--surface-overlay));
+  border-color: var(--theme-selection-border, var(--line));
+  color: var(--theme-selection-ink, var(--text-strong));
+}
+
+.sidebar__nav-item--active:hover {
   background: var(--theme-selection-bg, var(--surface-overlay));
   border-color: var(--theme-selection-border, var(--line));
   color: var(--theme-selection-ink, var(--text-strong));
@@ -151,6 +166,7 @@
 }
 
 .workspace-row:hover,
+.worktree-row:hover,
 .session-row:hover,
 .icon-button:hover:not(:disabled),
 .sidebar__settings:hover {
@@ -376,12 +392,28 @@
   color: var(--muted-strong);
   font-size: 12px;
   font-weight: 560;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.update-control__action:hover:not(:disabled) {
+  background: var(--theme-control-hover-bg, var(--surface-overlay-hover));
+  border-color: var(--theme-control-border, var(--line));
+  color: var(--text-strong);
 }
 
 .update-control__action--primary {
   color: var(--accent-contrast, #fff);
   background: var(--accent);
   border-color: transparent;
+}
+
+.update-control__action--primary:hover:not(:disabled) {
+  background: var(--button-primary-hover-bg, var(--accent));
+  border-color: transparent;
+  color: var(--accent-contrast, #fff);
 }
 
 .workspace-row {
@@ -508,11 +540,26 @@
   color: var(--muted-strong);
   font-size: 12px;
   font-weight: 560;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+
+.workspace-rename__button:hover:not(:disabled) {
+  background: var(--theme-control-hover-bg, var(--surface-overlay-hover));
+  color: var(--text-strong);
 }
 
 .workspace-rename__button--primary {
   border-color: var(--button-primary-border);
   background: var(--button-primary-bg);
+  color: var(--button-primary-ink);
+}
+
+.workspace-rename__button--primary:hover:not(:disabled) {
+  background: var(--button-primary-hover-bg);
+  border-color: var(--button-primary-hover-border);
   color: var(--button-primary-ink);
 }
 
@@ -597,6 +644,14 @@
   text-align: left;
   color: inherit;
   position: relative;
+}
+
+.session-row[draggable="true"] {
+  cursor: grab;
+}
+
+.session-row[draggable="true"]:active {
+  cursor: grabbing;
 }
 
 .session-row__leading {
@@ -792,7 +847,8 @@
 }
 
 .archived-thread-group__toggle:hover {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--theme-control-hover-bg, var(--surface-overlay-hover));
+  color: var(--text-strong);
 }
 
 .archived-thread-group__chevron {
@@ -917,7 +973,13 @@
   backdrop-filter: var(--glass-blur) var(--glass-saturation);
 }
 
-:root.dark .sidebar__nav-item--active {
+:root.dark .sidebar__nav-item:hover {
+  background: var(--theme-control-hover-bg, rgba(255, 255, 255, 0.06));
+  color: var(--text-strong);
+}
+
+:root.dark .sidebar__nav-item--active,
+:root.dark .sidebar__nav-item--active:hover {
   background: var(--theme-selection-bg, rgba(255, 255, 255, 0.06));
   border-color: var(--theme-selection-border, var(--line));
   color: var(--theme-selection-ink, var(--text-strong));
@@ -929,6 +991,7 @@
 }
 
 :root.dark .workspace-row:hover,
+:root.dark .worktree-row:hover,
 :root.dark .session-row:hover,
 :root.dark .icon-button:hover:not(:disabled),
 :root.dark .sidebar__settings:hover {

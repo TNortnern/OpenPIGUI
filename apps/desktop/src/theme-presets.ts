@@ -705,8 +705,8 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "default",
     name: "Default",
-    description: "Codex-inspired neutrals with a quiet blue accent.",
-    swatches: ["#ffffff", "#111111", "#2563eb", "#f4f4f5"],
+    description: "Cursor-feel true blacks with a quiet blue accent.",
+    swatches: ["#ffffff", "#0a0a0b", "#2563eb", "#141416"],
     variants: {
       light: { label: "Default light", tokens: {} },
       dark: { label: "Default dark", tokens: {} },

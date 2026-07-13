@@ -152,7 +152,10 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
   const slashOptions =
     activeSlashOptionCommand?.kind === "model"
       ? buildModelOptions(selectedModelRuntime)
-      : slashOptionsForCommand(activeSlashOptionCommand, selectedRuntime);
+      : slashOptionsForCommand(activeSlashOptionCommand, selectedRuntime, {
+          provider: selectedSession?.config?.provider,
+          modelId: selectedSession?.config?.modelId,
+        });
   const activeSlashOptionEmptyState = slashOptionEmptyState(
     activeSlashOptionCommand,
     activeSlashOptionCommand?.kind === "model"

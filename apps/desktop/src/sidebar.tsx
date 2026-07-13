@@ -22,6 +22,10 @@ import { comparePinnedThreads, sessionThreadKey, type ThreadGroup, type ThreadLi
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
 import { UpdateControl } from "./update-control";
+import {
+  COMPOSER_THREAD_MIME,
+  serializeThreadDropPayload,
+} from "./composer-context-blocks";
 
 interface SidebarProps {
   readonly activeView: AppView;
@@ -855,6 +859,9 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(funct
     dragging ? "session-row--dragging" : "",
     overlay ? "session-row--overlay" : "",
   ].filter(Boolean).join(" ");
+  // dnd-kit owns pointer gestures on pinned sortable rows; HTML5 drag is for
+  // composer context drops from ordinary thread rows.
+  const canDragToComposer = !dragListeners && !overlay;
   return (
     <div
       ref={ref}
@@ -863,6 +870,28 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(funct
       data-sidebar-indicator={indicatorVariant}
       data-session-pinned={pinned ? "true" : "false"}
       data-session-id={thread.session.id}
+      draggable={canDragToComposer}
+      onDragStart={
+        canDragToComposer
+          ? (event) => {
+              // Ignore drags that begin on action buttons (pin/archive).
+              const target = event.target;
+              if (target instanceof Element && target.closest(".session-row__action")) {
+                event.preventDefault();
+                return;
+              }
+              const payload = serializeThreadDropPayload({
+                workspaceId: thread.workspaceId,
+                sessionId: thread.session.id,
+                title: thread.session.title,
+                ...(thread.session.preview ? { preview: thread.session.preview } : {}),
+              });
+              event.dataTransfer.setData(COMPOSER_THREAD_MIME, payload);
+              event.dataTransfer.setData("text/plain", thread.session.title);
+              event.dataTransfer.effectAllowed = "copy";
+            }
+          : undefined
+      }
     >
       <button
         className="session-row__select"
