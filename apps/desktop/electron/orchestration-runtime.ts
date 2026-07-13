@@ -18,6 +18,13 @@ export const sendMessageToThreadAction = "pi_gui_send_message_to_thread";
 export interface CreateChildThreadToolDetails {
   readonly action: typeof createChildThreadAction;
   readonly prompt: string;
+  readonly provider?: string;
+  readonly model?: string;
+  readonly requestedProvider?: string;
+  readonly requestedModel?: string;
+  readonly resolvedProvider?: string;
+  readonly resolvedModel?: string;
+  readonly resolvedSource?: "explicit" | "discovered" | "inherited" | "default";
   readonly childThreadId?: string;
   readonly childWorkspaceId?: string;
   readonly childSessionId?: string;
@@ -80,7 +87,12 @@ export interface SendMessageToThreadToolDetails {
 export interface OrchestrationRuntimeBridge {
   readonly createChildThread: (
     ctx: ExtensionContext,
-    input: { readonly prompt: string; readonly toolCallId: string },
+    input: {
+      readonly prompt: string;
+      readonly toolCallId: string;
+      readonly provider?: string;
+      readonly model?: string;
+    },
   ) => Promise<AgentToolResult<CreateChildThreadToolDetails>>;
   readonly listThreads: (ctx: ExtensionContext) => Promise<AgentToolResult<ListThreadsToolDetails>>;
   readonly readThread: (ctx: ExtensionContext, threadId: string) => Promise<AgentToolResult<ReadThreadToolDetails>>;
@@ -105,6 +117,7 @@ function createCreateChildThreadTool(bridge: OrchestrationRuntimeBridge): ToolDe
     promptGuidelines: [
       "Use create_child_thread when the user asks you to spin up, delegate to, or run a separate child thread.",
       "Keep the child prompt concrete and self-contained so the user can inspect the resulting thread.",
+      "When the user names a provider or model, pass typed provider and model fields instead of leaving routing implicit.",
     ],
     parameters: {
       type: "object",
@@ -112,6 +125,14 @@ function createCreateChildThreadTool(bridge: OrchestrationRuntimeBridge): ToolDe
         prompt: {
           type: "string",
           description: "Concrete instructions for the child thread.",
+        },
+        provider: {
+          type: "string",
+          description: "Optional provider id for the child thread model.",
+        },
+        model: {
+          type: "string",
+          description: "Optional model id for the child thread.",
         },
       },
       required: ["prompt"],
@@ -121,7 +142,9 @@ function createCreateChildThreadTool(bridge: OrchestrationRuntimeBridge): ToolDe
       if (!prompt) {
         throw new Error("create_child_thread requires a non-empty prompt.");
       }
-      return bridge.createChildThread(ctx, { prompt, toolCallId });
+      const provider = childModelFieldFromParams(params, "provider");
+      const model = childModelFieldFromParams(params, "model");
+      return bridge.createChildThread(ctx, { prompt, toolCallId, ...(provider ? { provider } : {}), ...(model ? { model } : {}) });
     },
   };
 }
@@ -253,6 +276,14 @@ export function createChildThreadPromptFromParams(params: unknown): string | und
   }
   const prompt = typeof params.prompt === "string" ? params.prompt.trim() : "";
   return prompt || undefined;
+}
+
+function childModelFieldFromParams(params: unknown, key: "provider" | "model"): string | undefined {
+  if (!isRecord(params)) {
+    return undefined;
+  }
+  const value = typeof params[key] === "string" ? params[key].trim() : "";
+  return value || undefined;
 }
 
 export function createChildThreadPromptFromToolOutput(output: unknown): string | undefined {

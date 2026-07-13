@@ -34,6 +34,10 @@ import {
   sendMessageToThreadFromToolOutput,
   sendMessageToThreadToolName,
 } from "./orchestration-runtime";
+import {
+  ChildModelResolutionError,
+  resolveChildModelSelection,
+} from "./orchestration-model-selection";
 import type {
   CreateChildThreadToolDetails,
   ListThreadsToolDetails,
@@ -56,6 +60,8 @@ interface SpawnChildThreadInput {
   readonly parentSessionId: string;
   readonly prompt: string;
   readonly sourceToolCallId?: string;
+  readonly provider?: string;
+  readonly model?: string;
 }
 
 async function spawnChildThread(
@@ -107,10 +113,28 @@ async function createChildThreadRecord(
     pendingCreateChildThreadToolCalls.add(pendingKey);
   }
   try {
+    const parentRef = {
+      workspaceId: input.parentWorkspaceId,
+      sessionId: input.parentSessionId,
+    };
+    const parentConfig = store.sessionState.sessionConfigBySession.get(sessionKey(parentRef));
+    const parentSelection =
+      parentConfig?.provider && parentConfig.modelId
+        ? { provider: parentConfig.provider, modelId: parentConfig.modelId }
+        : undefined;
+    const runtime = store.runtimeByWorkspace.get(input.parentWorkspaceId);
     const createOptions = await store.buildCreateSessionOptions(input.parentWorkspaceId);
+    const resolved = resolveChildModelSelection({
+      request: { provider: input.provider, modelId: input.model },
+      parent: parentSelection,
+      models: runtime?.models ?? [],
+      defaultSelection: createOptions?.initialModel,
+    });
+
     const session = await store.driver.createSession(workspace, {
-      ...createOptions,
+      ...(createOptions ?? {}),
       title: titleFromPrompt(prompt),
+      initialModel: { provider: resolved.provider, modelId: resolved.modelId },
     });
     const childRef = session.ref;
     const key = sessionKey(childRef);
@@ -134,6 +158,11 @@ async function createChildThreadRecord(
       status,
       latestTranscript: session.preview || prompt,
       transcript: [],
+      ...(input.provider ? { requestedProvider: input.provider } : {}),
+      ...(input.model ? { requestedModel: input.model } : {}),
+      resolvedProvider: resolved.provider,
+      resolvedModel: resolved.modelId,
+      resolvedSource: resolved.source,
       evidence: [
         {
           id: evidenceId("created", input.sourceToolCallId ?? childRef.sessionId),
@@ -211,11 +240,16 @@ async function handleCreateChildThreadToolResult(
     return false;
   }
 
+  const provider = childModelFieldFromToolInput(tool.input, "provider");
+  const model = childModelFieldFromToolInput(tool.input, "model");
+
   await spawnChildThread(store, {
     parentWorkspaceId: event.sessionRef.workspaceId,
     parentSessionId: event.sessionRef.sessionId,
     prompt,
     sourceToolCallId: event.callId,
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
   });
 
   const child = childForToolCall(store, {
@@ -352,27 +386,56 @@ export async function cancelChildRunsForParent(store: AppStoreInternals, parentR
 export async function createChildThreadToolResult(
   store: AppStoreInternals,
   parentRef: SessionRef,
-  input: { readonly prompt: string; readonly toolCallId: string },
+  input: {
+    readonly prompt: string;
+    readonly toolCallId: string;
+    readonly provider?: string;
+    readonly model?: string;
+  },
 ): Promise<AgentToolResult<CreateChildThreadToolDetails>> {
-  const child = await createChildThreadRecord(store, {
-    parentWorkspaceId: parentRef.workspaceId,
-    parentSessionId: parentRef.sessionId,
-    prompt: input.prompt,
-    sourceToolCallId: input.toolCallId,
-  });
-  const details: CreateChildThreadToolDetails = {
-    action: createChildThreadAction,
-    prompt: input.prompt.trim(),
-    childThreadId: child.id,
-    childWorkspaceId: child.childWorkspaceId,
-    childSessionId: child.childSessionId,
-    title: child.title,
-  };
+  try {
+    const child = await createChildThreadRecord(store, {
+      parentWorkspaceId: parentRef.workspaceId,
+      parentSessionId: parentRef.sessionId,
+      prompt: input.prompt,
+      sourceToolCallId: input.toolCallId,
+      ...(input.provider ? { provider: input.provider } : {}),
+      ...(input.model ? { model: input.model } : {}),
+    });
+    const details: CreateChildThreadToolDetails = {
+      action: createChildThreadAction,
+      prompt: input.prompt.trim(),
+      ...(input.provider ? { provider: input.provider, requestedProvider: input.provider } : {}),
+      ...(input.model ? { model: input.model, requestedModel: input.model } : {}),
+      resolvedProvider: child.resolvedProvider,
+      resolvedModel: child.resolvedModel,
+      resolvedSource: child.resolvedSource,
+      childThreadId: child.id,
+      childWorkspaceId: child.childWorkspaceId,
+      childSessionId: child.childSessionId,
+      title: child.title,
+    };
 
-  return {
-    content: [{ type: "text", text: formatCreateChildThreadResult(details) }],
-    details,
-  };
+    return {
+      content: [{ type: "text", text: formatCreateChildThreadResult(details) }],
+      details,
+    };
+  } catch (error) {
+    const message =
+      error instanceof ChildModelResolutionError || error instanceof Error
+        ? error.message
+        : "Child thread creation failed.";
+    return {
+      content: [{ type: "text", text: message }],
+      details: {
+        action: createChildThreadAction,
+        prompt: input.prompt.trim(),
+        ...(input.provider ? { provider: input.provider, requestedProvider: input.provider } : {}),
+        ...(input.model ? { model: input.model, requestedModel: input.model } : {}),
+        error: message,
+      },
+    };
+  }
 }
 
 function updateListThreadsToolOutput(
@@ -492,7 +555,16 @@ export async function readThreadToolResult(
   };
 
   return {
-    content: [{ type: "text", text: formatThreadReadResult({ ...details, title, status, messages }) }],
+    content: [{ type: "text", text: formatThreadReadResult({
+      threadId,
+      title,
+      status,
+      goal: target.child?.goal,
+      resolvedProvider: target.child?.resolvedProvider,
+      resolvedModel: target.child?.resolvedModel,
+      resolvedSource: target.child?.resolvedSource,
+      messages,
+    }) }],
     details,
   };
 }
@@ -1233,12 +1305,18 @@ function formatThreadReadResult(result: {
   readonly title: string;
   readonly status: string;
   readonly goal?: string;
+  readonly resolvedProvider?: string;
+  readonly resolvedModel?: string;
+  readonly resolvedSource?: string;
   readonly messages: readonly OrchestrationChildTranscriptMessage[];
 }): string {
   const lines = [
     `Thread ${result.threadId}: ${result.title}`,
     `Status: ${result.status}`,
     ...(result.goal ? [`Goal: ${result.goal}`] : []),
+    ...(result.resolvedProvider && result.resolvedModel
+      ? [`Model: ${result.resolvedProvider}:${result.resolvedModel}${result.resolvedSource ? ` (${result.resolvedSource})` : ""}`]
+      : []),
     "Transcript:",
   ];
   if (result.messages.length === 0) {
@@ -1250,10 +1328,27 @@ function formatThreadReadResult(result: {
 }
 
 function formatCreateChildThreadResult(result: CreateChildThreadToolDetails): string {
+  const modelLine =
+    result.resolvedProvider && result.resolvedModel
+      ? `model: ${result.resolvedProvider}:${result.resolvedModel}${result.resolvedSource ? ` (${result.resolvedSource})` : ""}\n`
+      : "";
   return `Created child thread: ${result.title ?? result.prompt}\n` +
+    modelLine +
     `childThreadId: ${result.childThreadId ?? ""}\n` +
     `childWorkspaceId: ${result.childWorkspaceId ?? ""}\n` +
     `childSessionId: ${result.childSessionId ?? ""}`;
+}
+
+function childModelFieldFromToolInput(input: unknown, key: "provider" | "model"): string | undefined {
+  if (!input || typeof input !== "object") {
+    return undefined;
+  }
+  const value = (input as Record<string, unknown>)[key];
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed || undefined;
 }
 
 function formatSendMessageToThreadResult(result: SendMessageToThreadToolDetails): string {

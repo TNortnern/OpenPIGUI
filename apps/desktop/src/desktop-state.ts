@@ -177,6 +177,11 @@ export interface OrchestrationChildThread {
   readonly transcript: readonly OrchestrationChildTranscriptMessage[];
   readonly evidence: readonly OrchestrationEvidenceRecord[];
   readonly supervisionLoop?: OrchestrationSupervisionLoop;
+  readonly requestedProvider?: string;
+  readonly requestedModel?: string;
+  readonly resolvedProvider?: string;
+  readonly resolvedModel?: string;
+  readonly resolvedSource?: "explicit" | "discovered" | "inherited" | "default";
   readonly createdAt: string;
   readonly updatedAt: string;
 }
