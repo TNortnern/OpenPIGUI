@@ -44,6 +44,20 @@ export interface AppStoreInternals {
   withSessionError(sessionRef: SessionRef, error: unknown): Promise<DesktopAppState>;
   withErrorHandling(fn: () => Promise<DesktopAppState>): Promise<DesktopAppState>;
   selectSessionFast(target: WorkspaceSessionTarget): Promise<DesktopAppState>;
+  applyFastWorkspaceSelection(options: {
+    readonly selectedWorkspaceId: string;
+    readonly selectedSessionId: string;
+    readonly activeView?: AppView;
+  }): DesktopAppState;
+  scheduleWorkspaceHydration(options: {
+    readonly workspaceId: string;
+    readonly sessionId: string;
+    readonly path: string;
+    readonly displayName: string;
+    readonly refreshWorktrees?: boolean;
+    readonly skipSync?: boolean;
+  }): void;
+  markWorkspaceSynced(path: string): void;
   workspaceRefFromState(workspaceId: string): WorkspaceRef | undefined;
   selectedSessionRef(): SessionRef | undefined;
   getExtensionFilePath(workspaceId: string, filePath: string): string | undefined;

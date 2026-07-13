@@ -1,19 +1,23 @@
-import { useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode, type RefObject, type UIEvent } from "react";
 import type { ComposerAttachment } from "./desktop-state";
 import type { MentionOption } from "./hooks/use-mention-menu";
+import type { SkillMenuOption } from "./hooks/use-skill-menu";
 import type {
   ComposerSlashCommand,
   ComposerSlashCommandSection,
   ComposerSlashOption,
   ComposerSlashOptionEmptyState,
 } from "./composer-commands";
+import { draftHasSkillChips, skillChipLabel, splitComposerDraftSkills } from "./composer-skill-tokens";
 import { hasFilesInDataTransfer } from "./composer-attachments";
+import { hasThreadDropInDataTransfer } from "./composer-context-blocks";
 import { ExtensionDock, type ExtensionDockModel } from "./extension-session-ui";
 import { ExtensionIcon, FileIcon, ModelIcon, ReasoningIcon, SettingsIcon, SkillIcon, SparkIcon, StatusIcon } from "./icons";
 import { QueuedComposerMessages } from "./queued-composer-messages";
 
 type ExtensionMentionOption = Extract<MentionOption, { kind: "extension" }>;
 type FileMentionOption = Extract<MentionOption, { kind: "file" }>;
+type ComposerDragKind = "files" | "thread" | null;
 
 interface ComposerSurfaceProps {
   readonly lastError?: string;
@@ -49,6 +53,11 @@ interface ComposerSurfaceProps {
   readonly selectedMentionIndex: number;
   readonly onSelectMention: (option: MentionOption) => void;
   readonly onEnableMentionExtension: (option: ExtensionMentionOption) => void;
+  readonly showSkillMenu?: boolean;
+  readonly skillOptions?: readonly SkillMenuOption[];
+  readonly selectedSkillIndex?: number;
+  readonly onSelectSkill?: (option: SkillMenuOption) => void;
+  readonly skillChipSkills?: readonly { readonly name: string; readonly slashCommand: string }[];
   readonly textareaLabel: string;
   readonly textareaTestId: string;
   readonly textareaPlaceholder: string;
@@ -93,6 +102,11 @@ export function ComposerSurface({
   selectedMentionIndex,
   onSelectMention,
   onEnableMentionExtension,
+  showSkillMenu = false,
+  skillOptions = [],
+  selectedSkillIndex = 0,
+  onSelectSkill,
+  skillChipSkills = [],
   textareaLabel,
   textareaTestId,
   textareaPlaceholder,
@@ -103,20 +117,60 @@ export function ComposerSurface({
   footer,
 }: ComposerSurfaceProps) {
   const [isDragActive, setIsDragActive] = useState(false);
+  const [dragKind, setDragKind] = useState<ComposerDragKind>(null);
   const dragDepthRef = useRef(0);
+  const mirrorRef = useRef<HTMLDivElement | null>(null);
+  const showSkillChips = draftHasSkillChips(composerDraft);
+  const skillLabelByCommand = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const skill of skillChipSkills) {
+      const commandName = skill.slashCommand.replace(/^\/+/, "").replace(/^skill:/, "");
+      map.set(commandName.toLowerCase(), skillChipLabel(skill.name));
+    }
+    return map;
+  }, [skillChipSkills]);
+  const draftParts = useMemo(
+    () =>
+      splitComposerDraftSkills(composerDraft, (commandName) => {
+        return skillLabelByCommand.get(commandName.toLowerCase()) ?? skillChipLabel(commandName);
+      }),
+    [composerDraft, skillLabelByCommand],
+  );
+
+  useEffect(() => {
+    const textarea = composerRef.current;
+    const mirror = mirrorRef.current;
+    if (!textarea || !mirror) {
+      return;
+    }
+    mirror.scrollTop = textarea.scrollTop;
+  }, [composerDraft, composerRef, showSkillChips]);
 
   const clearDragState = () => {
     dragDepthRef.current = 0;
     setIsDragActive(false);
+    setDragKind(null);
+  };
+
+  const resolveDragKind = (dataTransfer: DataTransfer | null | undefined): ComposerDragKind => {
+    if (hasThreadDropInDataTransfer(dataTransfer)) {
+      return "thread";
+    }
+    if (hasFilesInDataTransfer(dataTransfer)) {
+      return "files";
+    }
+    return null;
   };
 
   const handleDragEnter = (event: DragEvent<HTMLDivElement>) => {
-    if (!hasFilesInDataTransfer(event.dataTransfer)) {
+    const kind = resolveDragKind(event.dataTransfer);
+    if (!kind) {
       return;
     }
     event.preventDefault();
     dragDepthRef.current += 1;
     setIsDragActive(true);
+    setDragKind(kind);
   };
 
   const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
@@ -126,17 +180,20 @@ export function ComposerSurface({
     dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
     if (dragDepthRef.current === 0) {
       setIsDragActive(false);
+      setDragKind(null);
     }
   };
 
   const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
-    if (!hasFilesInDataTransfer(event.dataTransfer)) {
+    const kind = resolveDragKind(event.dataTransfer);
+    if (!kind) {
       return;
     }
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     if (!isDragActive) {
       setIsDragActive(true);
+      setDragKind(kind);
     }
   };
 
@@ -157,7 +214,7 @@ export function ComposerSurface({
     >
       {isDragActive ? (
         <div className="composer__drop-indicator" data-testid="composer-drop-indicator">
-          Drop images or files to attach
+          {dragKind === "thread" ? "Drop chat to attach as context" : "Drop images or files to attach"}
         </div>
       ) : null}
       {activeSlashCommand ? (
@@ -227,6 +284,29 @@ export function ComposerSurface({
       ) : null}
       <div className="composer__editor">
         {topNotice}
+        {showSkillMenu ? (
+          <div className="composer__menus">
+            <div className="skill-menu" data-testid="skill-menu" onWheel={(event) => event.stopPropagation()}>
+              {skillOptions.map((option, index) => (
+                <button
+                  className={`skill-menu__item ${selectedSkillIndex === index ? "skill-menu__item--active" : ""}`}
+                  key={option.id}
+                  type="button"
+                  onClick={() => onSelectSkill?.(option)}
+                >
+                  <span className="skill-menu__icon" aria-hidden="true">
+                    <SkillIcon />
+                  </span>
+                  <span className="skill-menu__content">
+                    <span className="skill-menu__title">{option.label}</span>
+                    <span className="skill-menu__description">{option.description}</span>
+                  </span>
+                  <span className="skill-menu__source">{option.sourceLabel}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {showMentionMenu ? (
           <div className="composer__menus">
             <div className="mention-menu" data-testid="mention-menu" onWheel={(event) => event.stopPropagation()}>
@@ -317,18 +397,46 @@ export function ComposerSurface({
             ) : null}
           </div>
         ) : null}
-        <textarea
-          aria-label={textareaLabel}
-          className={textareaClassName}
-          data-testid={textareaTestId}
-          ref={composerRef}
-          value={composerDraft}
-          onChange={(event) => {
-            setComposerDraft(event.target.value);
-          }}
-          onKeyDown={onComposerKeyDown}
-          placeholder={textareaPlaceholder}
-        />
+        <div className={`composer__field${showSkillChips ? " composer__field--chips" : ""}`}>
+          {showSkillChips ? (
+            <div aria-hidden="true" className="composer__mirror" ref={mirrorRef}>
+              {draftParts.map((part, index) =>
+                part.kind === "skill" ? (
+                  <span className="composer__skill-chip" key={`skill-${index}-${part.token}`}>
+                    <span className="composer__skill-chip-spacer" aria-hidden="true">
+                      {part.token}
+                    </span>
+                    <span className="composer__skill-chip-face">
+                      <span className="composer__skill-chip-icon">
+                        <SkillIcon />
+                      </span>
+                      <span className="composer__skill-chip-label">{part.label}</span>
+                    </span>
+                  </span>
+                ) : (
+                  <span key={`text-${index}`}>{part.text}</span>
+                ),
+              )}
+            </div>
+          ) : null}
+          <textarea
+            aria-label={textareaLabel}
+            className={[textareaClassName, showSkillChips ? "composer__textarea--chips" : ""].filter(Boolean).join(" ")}
+            data-testid={textareaTestId}
+            ref={composerRef}
+            value={composerDraft}
+            onChange={(event) => {
+              setComposerDraft(event.target.value);
+            }}
+            onKeyDown={onComposerKeyDown}
+            onScroll={(event: UIEvent<HTMLTextAreaElement>) => {
+              if (mirrorRef.current) {
+                mirrorRef.current.scrollTop = event.currentTarget.scrollTop;
+              }
+            }}
+            placeholder={textareaPlaceholder}
+          />
+        </div>
         <div className="composer__bar">{footer}</div>
       </div>
     </div>

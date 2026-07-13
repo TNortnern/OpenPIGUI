@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { RuntimeSettingsSnapshot, RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
+import { matchesModelSearch } from "./model-search";
 
 export type SettingsSection = "general" | "providers" | "models" | "notifications";
 
@@ -74,14 +75,8 @@ export function filterModels(
   models: readonly RuntimeSnapshot["models"][number][],
   query: string,
 ): readonly RuntimeSnapshot["models"][number][] {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) {
-    return models;
-  }
   return models.filter((model) =>
-    [model.providerId, model.providerName, model.modelId, model.label].some((value) =>
-      value.toLowerCase().includes(normalized),
-    ),
+    matchesModelSearch(query, [model.providerId, model.providerName, model.modelId, model.label]),
   );
 }
 

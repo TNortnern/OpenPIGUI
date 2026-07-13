@@ -373,6 +373,8 @@ declare module "@pi-gui/session-driver/runtime-types" {
     readonly available: boolean;
     readonly authType: RuntimeAuthType;
     readonly reasoning: boolean;
+    /** Levels from pi-ai `getSupportedThinkingLevels` for this model (includes `off` when applicable). */
+    readonly thinkingLevels: readonly string[];
     readonly supportsImages: boolean;
   }
 

@@ -29,6 +29,7 @@ import { createRuntimeDependencies } from "./runtime-deps.js";
 import { createSettingsManagerWithoutNpmPackages, isGlobalNpmLookupError } from "./npm-package-fallback.js";
 import { skillSlashCommand } from "./runtime-command-utils.js";
 import type { AuthStatus, AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import {
   BUILT_IN_PROVIDER_IDS,
   CustomProviderStore,
@@ -114,16 +115,33 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     context.settingsManager.reload();
     this.authStorage.reload();
     this.modelRegistry.refresh();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     await this.autoEnableModelsForAuthenticatedProviders(context);
     return this.buildSnapshot(context);
   }
 
   async login(workspace: WorkspaceRef, providerId: string, callbacks: RuntimeLoginCallbacks): Promise<RuntimeSnapshot> {
     const context = await this.ensureContext(workspace);
-    await this.authStorage.login(providerId, toPiOAuthLoginCallbacks(callbacks));
+    const oauthProviderIds = new Set(this.authStorage.getOAuthProviders().map((provider) => provider.id));
+    if (oauthProviderIds.has(providerId)) {
+      await this.authStorage.login(providerId, toPiOAuthLoginCallbacks(callbacks));
+    } else if (providerSupportsDesktopApiKeySetup(providerId)) {
+      const apiKey = (
+        await callbacks.onPrompt({
+          message: `Enter API key for ${providerId}:`,
+          placeholder: "sk-...",
+          allowEmpty: false,
+        })
+      ).trim();
+      if (!apiKey) {
+        throw new Error("API key is required.");
+      }
+      this.authStorage.set(providerId, { type: "api_key", key: apiKey });
+    } else {
+      throw new Error(`Login is not supported for ${providerId}. Use Settings → Providers for other auth methods.`);
+    }
     this.modelRegistry.refresh();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     await this.autoEnableModelsForAuthenticatedProviders(context, [providerId]);
     return this.buildSnapshot(context);
   }
@@ -132,7 +150,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     const context = await this.ensureContext(workspace);
     this.authStorage.logout(providerId);
     this.modelRegistry.refresh();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     return this.buildSnapshot(context);
   }
 
@@ -147,7 +165,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     }
     this.authStorage.set(providerId, { type: "api_key", key: normalized });
     this.modelRegistry.refresh();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     await this.autoEnableModelsForAuthenticatedProviders(context, [providerId]);
     return this.buildSnapshot(context);
   }
@@ -166,7 +184,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     const context = await this.ensureContext(workspace);
     await this.customProviderStore.set(input);
     this.modelRegistry.refresh();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     await this.autoEnableModelsForAuthenticatedProviders(context, [input.providerId]);
     return this.buildSnapshot(context);
   }
@@ -175,7 +193,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     const context = await this.ensureContext(workspace);
     await this.customProviderStore.delete(providerId);
     this.modelRegistry.refresh();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     return this.buildSnapshot(context);
   }
 
@@ -247,7 +265,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     const context = await this.ensureContext(workspace);
     context.settingsManager.setEnableSkillCommands(enabled);
     await context.settingsManager.flush();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     return this.buildSnapshot(context);
   }
 
@@ -328,7 +346,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
 
     this.toggleResource(context, resource, enabled, "skill");
     await context.settingsManager.flush();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     return this.buildSnapshot(context);
   }
 
@@ -342,7 +360,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
 
     this.toggleResource(context, resource, enabled, "extension");
     await context.settingsManager.flush();
-    await context.resourceLoader.reload();
+    await this.reloadResources(context);
     return this.buildSnapshot(context);
   }
 
@@ -403,11 +421,38 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
       packageManager,
       resourceLoader,
     };
+    this.applyPendingExtensionProviders(context);
     this.contexts.set(workspace.workspaceId, context);
     return context;
   }
 
+  private async reloadResources(context: RuntimeContext): Promise<void> {
+    await context.resourceLoader.reload();
+    this.applyPendingExtensionProviders(context);
+  }
+
+  /**
+   * Match pi's createAgentSessionServices: extension registerProvider calls are
+   * queued on the resource loader until something applies them to ModelRegistry.
+   * Without this, npm providers like pi-cursor-sdk never appear in desktop snapshots.
+   */
+  private applyPendingExtensionProviders(context: RuntimeContext): void {
+    const extensionsResult = context.resourceLoader.getExtensions();
+    const pending = extensionsResult.runtime.pendingProviderRegistrations;
+    for (const { name, config, extensionPath } of pending) {
+      try {
+        this.modelRegistry.registerProvider(name, config);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[pi-gui] Extension "${extensionPath}" provider registration failed: ${message}`);
+      }
+    }
+    extensionsResult.runtime.pendingProviderRegistrations = [];
+  }
+
   private async buildSnapshot(context: RuntimeContext): Promise<RuntimeSnapshot> {
+    // Re-apply if a prior reload left pending registrations (e.g. first snapshot).
+    this.applyPendingExtensionProviders(context);
     const resolvedPaths = await this.resolveRuntimePaths(context);
     const [skills, extensions, providers, models] = await Promise.all([
       this.buildSkillRecords(context, resolvedPaths.skills),
@@ -483,7 +528,7 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
         const hasAuth = providerAuthStatus.configured || this.authStorage.hasAuth(providerId);
         return {
           id: providerId,
-          name: oauthProvider?.name ?? providerId,
+          name: this.modelRegistry.getProviderDisplayName(providerId),
           hasAuth,
           authType: auth?.type ?? "none",
           authSource: inferProviderAuthSource(auth, providerAuthStatus, apiKeySetupSupported),
@@ -500,26 +545,39 @@ export class RuntimeSupervisor implements RuntimeResourceDriver {
     );
     const providers = new Map((await this.buildProviderRecords()).map((provider) => [provider.id, provider]));
 
-    return this.modelRegistry
-      .getAll()
-      .map<RuntimeModelRecord>((model) => {
-        const provider = providers.get(model.provider);
-        return {
-          providerId: model.provider,
-          providerName: provider?.name ?? model.provider,
-          modelId: model.id,
-          label: model.name,
-          available: availableKeys.has(`${model.provider}:${model.id}`),
-          authType: provider?.authType ?? "none",
-          reasoning: Boolean(model.reasoning),
-          supportsImages: model.input.includes("image"),
-        };
-      })
-      .sort((left, right) =>
-        left.providerId === right.providerId
-          ? left.modelId.localeCompare(right.modelId)
-          : left.providerId.localeCompare(right.providerId),
-      );
+    const records: RuntimeModelRecord[] = [];
+    const seenKeys = new Set<string>();
+    for (const model of this.modelRegistry.getAll()) {
+      const key = `${model.provider}:${model.id}`;
+      if (seenKeys.has(key)) {
+        continue;
+      }
+      seenKeys.add(key);
+      const provider = providers.get(model.provider);
+      records.push({
+        providerId: model.provider,
+        providerName: provider?.name ?? model.provider,
+        modelId: model.id,
+        label: model.name,
+        available: availableKeys.has(key),
+        authType: provider?.authType ?? "none",
+        reasoning: Boolean(model.reasoning),
+        thinkingLevels: getSupportedThinkingLevels(model),
+        supportsImages: model.input.includes("image"),
+      });
+    }
+
+    // Prefer pi-cursor-sdk's `cursor` provider over legacy models.json `cursor-sdk`.
+    const hasCursorProvider = records.some((model) => model.providerId === "cursor");
+    const filtered = hasCursorProvider
+      ? records.filter((model) => model.providerId !== "cursor-sdk")
+      : records;
+
+    return filtered.sort((left, right) =>
+      left.providerId === right.providerId
+        ? left.modelId.localeCompare(right.modelId)
+        : left.providerId.localeCompare(right.providerId),
+    );
   }
 
   private async autoEnableModelsForAuthenticatedProviders(
@@ -886,6 +944,7 @@ async function readPackageMetadata(packageRoot: string): Promise<PackageMetadata
 const DESKTOP_API_KEY_PROVIDER_IDS = new Set([
   "azure-openai-responses",
   "cerebras",
+  "cursor",
   "google",
   "groq",
   "huggingface",

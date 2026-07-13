@@ -99,6 +99,15 @@ import {
   type PiCreateAgentSessionOptions,
 } from "./npm-package-fallback.js";
 
+/** Totals from pi AgentSession.getContextUsage(); no per-category breakdown. */
+export interface SessionContextUsage {
+  readonly tokens: number | null;
+  readonly contextWindow: number;
+  readonly percent: number | null;
+  /** Recent assistant output tokens/sec when measurable from the last turn. */
+  readonly tokensPerSecond?: number | null;
+}
+
 export interface PiSdkDriverOptions {
   readonly catalogFilePath?: string;
   readonly createAgentSessionRuntimeImpl?: (options?: CreateAgentSessionOptions) => Promise<AgentSessionRuntime>;
@@ -418,6 +427,29 @@ export class SessionSupervisor {
       return buildSessionSchemaInfo(undefined);
     }
     return buildSessionSchemaInfo(await readSessionFileSchemaVersion(sessionFile));
+  }
+
+  /**
+   * Live context-window usage from pi's AgentSession.getContextUsage().
+   * Requires an open session with a selected model; returns undefined otherwise.
+   * Category breakdowns (system/tools/rules) are not exposed by pi — only totals.
+   * tokensPerSecond is derived from the last assistant message usage/timestamps.
+   */
+  async getContextUsage(sessionRef: SessionRef): Promise<SessionContextUsage | undefined> {
+    const record = this.records.get(sessionKey(sessionRef));
+    if (!record?.session || record.closed) {
+      return undefined;
+    }
+    const usage = record.session.getContextUsage();
+    if (!usage) {
+      return undefined;
+    }
+    return {
+      tokens: usage.tokens,
+      contextWindow: usage.contextWindow,
+      percent: usage.percent,
+      tokensPerSecond: deriveTokensPerSecond(record.session),
+    };
   }
 
   private async findSessionFileOnDisk(sessionRef: SessionRef): Promise<string | undefined> {
@@ -1891,9 +1923,18 @@ export class SessionSupervisor {
 
   private collectSessionCommands(session: AgentSession): RuntimeCommandRecord[] {
     const commands: RuntimeCommandRecord[] = [];
+    const seenNames = new Set<string>();
+
+    const pushUnique = (command: RuntimeCommandRecord): void => {
+      if (seenNames.has(command.name)) {
+        return;
+      }
+      seenNames.add(command.name);
+      commands.push(command);
+    };
 
     for (const command of getRegisteredCommands(session)) {
-      commands.push({
+      pushUnique({
         name: normalizeRuntimeCommandName(command.invocationName ?? command.name),
         ...(command.description ? { description: command.description } : {}),
         source: "extension",
@@ -1905,7 +1946,7 @@ export class SessionSupervisor {
     }
 
     for (const template of getPromptTemplates(session)) {
-      commands.push({
+      pushUnique({
         name: normalizeRuntimeCommandName(template.name),
         ...(template.description ? { description: template.description } : {}),
         source: "prompt",
@@ -1917,7 +1958,7 @@ export class SessionSupervisor {
     }
 
     for (const skill of getSkills(session)) {
-      commands.push({
+      pushUnique({
         name: skillCommandName(skill.name),
         description: skill.description,
         source: "skill",
@@ -2149,6 +2190,46 @@ function clampThinkingLevel(level: string, availableLevels: readonly string[]): 
     }
   }
   return availableLevels[0] ?? "off";
+}
+
+/** Last assistant output tokens / elapsed seconds since prior message (pi has no native TPS field). */
+function deriveTokensPerSecond(session: AgentSession): number | null {
+  const messages = session.messages;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "assistant") {
+      continue;
+    }
+    const usage = "usage" in message ? message.usage : undefined;
+    const outputTokens =
+      usage && typeof usage === "object" && typeof (usage as { output?: unknown }).output === "number"
+        ? (usage as { output: number }).output
+        : null;
+    const endMs =
+      typeof message.timestamp === "number" && Number.isFinite(message.timestamp)
+        ? message.timestamp
+        : null;
+    if (outputTokens == null || outputTokens <= 0 || endMs == null) {
+      return null;
+    }
+    let startMs: number | null = null;
+    for (let prior = index - 1; prior >= 0; prior -= 1) {
+      const previous = messages[prior];
+      if (previous && typeof previous.timestamp === "number" && Number.isFinite(previous.timestamp)) {
+        startMs = previous.timestamp;
+        break;
+      }
+    }
+    if (startMs == null || endMs <= startMs) {
+      return null;
+    }
+    const seconds = (endMs - startMs) / 1000;
+    if (seconds <= 0) {
+      return null;
+    }
+    return Math.round((outputTokens / seconds) * 10) / 10;
+  }
+  return null;
 }
 
 async function createCanonicalWorkspaceRef(path: string, displayName?: string): Promise<WorkspaceRef> {

@@ -6,6 +6,7 @@ import {
   type CustomProviderProbeInput,
   type CustomProviderProbeResult,
   type DesktopNotificationPermissionStatus,
+  type UpdateState,
   type WorkspaceFilePreview,
   type PiDesktopCommand,
   type TerminalDataEvent,
@@ -305,7 +306,10 @@ contextBridge.exposeInMainWorld("piApp", {
     ipcRenderer.invoke(desktopIpc.steerQueuedComposerMessage, messageId) as Promise<DesktopAppState>,
   updateComposerDraft: (composerDraft: string) =>
     ipcRenderer.invoke(desktopIpc.updateComposerDraft, composerDraft) as Promise<DesktopAppState>,
-  submitComposer: (text: string, options?: { readonly deliverAs?: "steer" | "followUp" }) =>
+  submitComposer: (text: string, options?: {
+    readonly deliverAs?: "steer" | "followUp";
+    readonly clientMessageId?: string;
+  }) =>
     ipcRenderer.invoke(desktopIpc.submitComposer, text, options) as Promise<DesktopAppState>,
   getSessionTree: (target: WorkspaceSessionTarget) =>
     ipcRenderer.invoke(desktopIpc.getSessionTree, target) as Promise<SessionTreeSnapshot>,
@@ -337,4 +341,9 @@ contextBridge.exposeInMainWorld("piApp", {
       ipcRenderer.removeListener(desktopIpc.themeChanged, handler);
     };
   },
+  getUpdateState: () => ipcRenderer.invoke(desktopIpc.getUpdateState) as Promise<UpdateState>,
+  checkForUpdates: () => ipcRenderer.invoke(desktopIpc.checkForUpdates) as Promise<UpdateState>,
+  restartToUpdate: () =>
+    ipcRenderer.invoke(desktopIpc.restartToUpdate) as Promise<{ readonly accepted: boolean }>,
+  onUpdateState: (listener: (state: UpdateState) => void) => subscribeIpc(desktopIpc.updateStateChanged, listener),
 });

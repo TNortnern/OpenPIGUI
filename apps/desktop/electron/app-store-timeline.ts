@@ -53,11 +53,13 @@ export function appendUserMessage(
   sessionRef: SessionRef,
   text: string,
   attachments: NonNullable<Extract<TranscriptMessage, { kind: "message" }>["attachments"]> = [],
+  options: { readonly id?: string } = {},
 ): string {
   const key = sessionKey(sessionRef);
   const transcript = [...(transcriptCache.get(key) ?? [])];
-  const message =
+  const base =
     attachments.length > 0 ? makeTranscriptMessageWithAttachments("user", text, attachments) : makeTranscriptMessage("user", text);
+  const message = options.id ? { ...base, id: options.id } : base;
   transcript.push(message);
   transcriptCache.set(key, transcript);
   return message.id;

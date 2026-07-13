@@ -177,6 +177,11 @@ export interface OrchestrationChildThread {
   readonly transcript: readonly OrchestrationChildTranscriptMessage[];
   readonly evidence: readonly OrchestrationEvidenceRecord[];
   readonly supervisionLoop?: OrchestrationSupervisionLoop;
+  readonly requestedProvider?: string;
+  readonly requestedModel?: string;
+  readonly resolvedProvider?: string;
+  readonly resolvedModel?: string;
+  readonly resolvedSource?: "explicit" | "discovered" | "inherited" | "default";
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -191,6 +196,14 @@ export interface SetChildSupervisionLoopInput {
   readonly gate: Extract<OrchestrationSupervisionGate, "continue" | "stop">;
 }
 
+export interface SessionContextUsage {
+  readonly tokens: number | null;
+  readonly contextWindow: number;
+  readonly percent: number | null;
+  /** Recent assistant output tokens/sec when measurable from the last turn. */
+  readonly tokensPerSecond?: number | null;
+}
+
 export interface SelectedTranscriptRecord {
   readonly workspaceId: string;
   readonly sessionId: string;
@@ -198,6 +211,8 @@ export interface SelectedTranscriptRecord {
   // Session-file schema-version skew, when known. `writtenByNewerRuntime` drives the version-skew
   // notice; undefined until the (async, static-per-session) header read resolves.
   readonly schemaInfo?: SessionSchemaInfo;
+  /** Live context usage from pi; undefined until the async read resolves or when no model is set. */
+  readonly contextUsage?: SessionContextUsage;
 }
 
 export interface WorktreeRecord {

@@ -53,7 +53,50 @@ pnpm --filter @pi-gui/desktop run package:win:dir
 
 On Windows, `package:win*` routes through `scripts/package-windows.mjs`, which prefers the ASCII repo-local `tools/pnpm.cmd` shim and redirects `ELECTRON_BUILDER_CACHE` / `LOCALAPPDATA` into `.cache/` under the repo. This avoids electron-builder failures when `pnpm` lives under a non-ASCII `%USERPROFILE%` or when Developer Mode / elevation is unavailable for winCodeSign symlink extraction. Set `ELECTRON_MIRROR` if Electron downloads are flaky in your region.
 
+## Automatic Updates
+
+Packaged production builds check GitHub Releases through a narrow main-process update service and expose typed renderer IPC only (`getUpdateState`, `checkForUpdates`, `restartToUpdate`, `onUpdateState`). Dev, unpackaged, and Playwright test launches keep updates disabled unless `PI_APP_UPDATE_CONTROLLED_FEED=1` is set for opt-in packaged-update proofs.
+
+| Platform | Updater artifact | Notes |
+| --- | --- | --- |
+| macOS (Apple Silicon) | Signed ZIP + `latest-mac.yml` + `.zip.blockmap` | Primary auto-update surface. Release CI requires `CSC_LINK` and notarizes when App Store Connect API secrets are configured. |
+| Windows | NSIS installer + `latest.yml` + `.exe.blockmap` | Supported when NSIS metadata is present on the release. |
+| Linux | AppImage + `latest-linux*.yml` + `.AppImage.zsync` | Supported when AppImage metadata is present on the release. |
+| Other formats (DMG, portable EXE, unpacked builds) | Manual download fallback | These install paths are not wired to electron-updater; use the GitHub release asset directly. |
+
+macOS **Check for Updates…** in the application menu triggers the same in-app service as the renderer control: it checks for updates and focuses the running window so the in-app status surface is visible. Restart installs only after the existing persistence flush completes.
+
+Pure update tests:
+
+```bash
+pnpm --filter @pi-gui/desktop run test:pure:update-service
+pnpm --filter @pi-gui/desktop run test:pure:update-ipc
+pnpm --filter @pi-gui/desktop run test:pure:orchestration-model-selection
+```
+
+Opt-in proofs stay out of the default core lane:
+
+```bash
+# Live child-model routing (requires PI_APP_REAL_AUTH=1 and PI_APP_REAL_AUTH_SOURCE_DIR)
+pnpm --filter @pi-gui/desktop run test:live:orchestration-model-routing
+
+# Packaged two-version updater proof (requires signed N/N+1 artifacts)
+PI_APP_PACKAGED_UPDATE_BASE=/path/to/N PI_APP_PACKAGED_UPDATE_NEXT=/path/to/N+1 \
+  pnpm --filter @pi-gui/desktop run test:prod:packaged-update
+```
+
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
+
+## Release notes (0.1.0-beta.36)
+
+- **Downloads:** Install from [GitHub Releases `v0.1.0-beta.36`](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.36) (macOS DMG/zip; Linux/Windows when the release workflow publishes them).
+- **In-app updates:** Sidebar footer shows check/download/restart status; macOS menu Check for Updates focuses the same control. Restart is user-initiated and waits for persistence flush.
+- **Composer / multitask:** Skill tokens, context blocks (including thread drops), terminal add-to-chat, optimistic composer status, and multitask chrome.
+- **Model UX:** Searchable model picker, visibility menu (Cursor and other providers), thinking-level options, agent inspector polish.
+- **Sidebar:** Thread rows stay click-to-select while remaining drag-to-composer when movement exceeds the click threshold.
+- **Child model routing:** `create_child_thread` accepts optional `provider`/`model`, resolves against the live registry before session creation, persists provenance, and rejects ambiguous/unavailable requests without orphan sessions.
+- **Desktop affordances:** Globe browser icon, `aria-pressed` quick actions, per-project “New thread” plus buttons, and Copy on user/assistant messages with accessible feedback.
+- **Verification:** Pure update/orchestration/pointer tests plus core Playwright specs; live routing and packaged N→N+1 updater proofs remain opt-in (`PI_APP_REAL_AUTH`, signed artifacts).
 
 ## Test Lanes
 

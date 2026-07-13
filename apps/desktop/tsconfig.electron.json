@@ -1,12 +1,14 @@
 {
   "extends": ["../../tsconfig.base.json", "./tsconfig.paths.json"],
-  "compilerOptions": {
+    "compilerOptions": {
     "lib": ["ES2022"],
     "outDir": "out",
     "rootDir": "../..",
     "composite": false,
     "declaration": false,
     "sourceMap": false,
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,

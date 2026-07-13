@@ -26,11 +26,26 @@ test("opens a shared right rail with deterministic mode switching and horizontal
     await waitForWorkspaceByPath(window, workspacePath);
     await createNamedThread(window, "Right rail thread");
 
+    const terminalButton = window.getByLabel("Toggle terminal");
+    const changesButton = window.getByLabel("Toggle changes");
+    const filesButton = window.getByLabel("Toggle files");
+    const browserButton = window.getByLabel("Toggle browser");
+    await expect(terminalButton).toHaveAttribute("aria-pressed", "false");
+    await expect(changesButton).toHaveAttribute("aria-pressed", "false");
+    await expect(filesButton).toHaveAttribute("aria-pressed", "false");
+    await expect(browserButton).toHaveAttribute("aria-pressed", "false");
+
+    const actionLabels = await window.locator(".topbar__actions button").evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("aria-label")),
+    );
+    expect(actionLabels).toEqual(["Toggle terminal", "Toggle changes", "Toggle files", "Toggle browser"]);
+
     await expect(window.getByTestId("right-rail")).toHaveCount(0);
 
     await window.getByLabel("Toggle terminal").click();
     const rail = window.getByTestId("right-rail");
     await expect(rail).toBeVisible();
+    await expect(terminalButton).toHaveAttribute("aria-pressed", "true");
     await expect(window.getByTestId("integrated-terminal")).toBeVisible();
 
     const conversation = window.locator(".conversation, .canvas").first();

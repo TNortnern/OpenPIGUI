@@ -1,4 +1,5 @@
 import type { SessionTranscriptMessage } from "@pi-gui/pi-sdk-driver";
+import { useEffect, useState } from "react";
 import type { TimelineActivity, TimelineToolCall, TimelineSummary, TranscriptMessage } from "./timeline-types";
 import { MessageMarkdown } from "./message-markdown";
 import { InlineDiff, extractDiffFromOutput } from "./diff-inline";
@@ -56,6 +57,37 @@ function TimelineMessage({
   readonly sourceMessageIndex?: number;
   readonly onForkFromMessage?: (messageIndex: number, preview?: string) => void;
 }) {
+  const [copyFeedback, setCopyFeedback] = useState<string | undefined>();
+  useEffect(() => {
+    if (!copyFeedback) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setCopyFeedback(undefined), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copyFeedback]);
+
+  const handleCopy = () => {
+    const text = item.text;
+    void navigator.clipboard.writeText(text).then(
+      () => setCopyFeedback("Copied"),
+      () => {
+        try {
+          const area = document.createElement("textarea");
+          area.value = text;
+          area.style.position = "fixed";
+          area.style.left = "-9999px";
+          document.body.appendChild(area);
+          area.select();
+          const copied = document.execCommand("copy");
+          area.remove();
+          setCopyFeedback(copied ? "Copied" : "Copy failed");
+        } catch {
+          setCopyFeedback("Copy failed");
+        }
+      },
+    );
+  };
+
   if (item.role === "user") {
     return (
       <article className="timeline-item timeline-item--user">
@@ -87,6 +119,23 @@ function TimelineMessage({
           ) : null}
           <MessageMarkdown text={item.text} />
         </div>
+        <div className="timeline-item__actions timeline-item__actions--user">
+          <button
+            aria-label="Copy message"
+            className="timeline-item__action"
+            data-testid="copy-message"
+            type="button"
+            onClick={handleCopy}
+          >
+            <CopyIcon />
+            <span className="timeline-item__action-label">Copy</span>
+          </button>
+          {copyFeedback ? (
+            <span aria-live="polite" className="timeline-item__copy-feedback">
+              {copyFeedback}
+            </span>
+          ) : null}
+        </div>
       </article>
     );
   }
@@ -106,8 +155,18 @@ function TimelineMessage({
   return (
     <article className="timeline-item timeline-item--assistant">
       <MessageMarkdown text={item.text} />
-      {canFork ? (
-        <div className="timeline-item__actions">
+      <div className="timeline-item__actions">
+        <button
+          aria-label="Copy message"
+          className="timeline-item__action"
+          data-testid="copy-message"
+          type="button"
+          onClick={handleCopy}
+        >
+          <CopyIcon />
+          <span className="timeline-item__action-label">Copy</span>
+        </button>
+        {canFork ? (
           <button
             type="button"
             className="timeline-item__action"
@@ -119,8 +178,13 @@ function TimelineMessage({
             <ForkIcon />
             <span className="timeline-item__action-label">Fork</span>
           </button>
-        </div>
-      ) : null}
+        ) : null}
+        {copyFeedback ? (
+          <span aria-live="polite" className="timeline-item__copy-feedback">
+            {copyFeedback}
+          </span>
+        ) : null}
+      </div>
     </article>
   );
 }

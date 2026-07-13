@@ -24,36 +24,42 @@ export async function addWorkspace(store: AppStoreInternals, path: string): Prom
   if (!normalizedPath) {
     return store.emit();
   }
-  const hadNoWorkspaces = store.state.workspaces.length === 0;
 
   const existing = store.state.workspaces.find((workspace) => workspace.path === normalizedPath);
   if (existing) {
-    return syncWorkspace(store, existing.id, {
-      selectedWorkspaceId: existing.id,
-      selectedSessionId: store.state.selectedSessionId,
-      clearLastError: true,
-      refreshWorktrees: true,
-    });
+    return selectWorkspace(store, existing.id);
   }
 
   return store.withErrorHandling(async () => {
+    // Required cold path: register the folder + scan sessions once.
     const synced = await store.driver.syncWorkspace(normalizedPath);
-    const firstSession = synced.sessions[0];
-    if (firstSession) {
-      await store.ensureSessionReady(firstSession.sessionRef);
-    }
-    if (hadNoWorkspaces) {
-      const snapshot = await store.driver.runtimeSupervisor.refreshRuntime(synced.workspace);
-      store.runtimeByWorkspace.set(synced.workspace.workspaceId, snapshot);
-    }
+    store.markWorkspaceSynced(synced.workspace.path);
 
-    return store.refreshState({
+    const firstSession = synced.sessions[0];
+    const selectedSessionId = firstSession?.sessionRef.sessionId ?? "";
+
+    // Return quickly: skip inline session bind / worktree refresh / duplicate runtime preload.
+    // Selected-workspace runtime still loads inside refreshState for the New thread model picker.
+    const snapshot = await store.refreshState({
       selectedWorkspaceId: synced.workspace.workspaceId,
-      selectedSessionId: firstSession?.sessionRef.sessionId ?? "",
+      selectedSessionId,
       composerDraft: "",
       clearLastError: true,
-      refreshWorktrees: true,
+      refreshWorktrees: false,
+      hydrateSelectedSession: false,
+      activeView: "new-thread",
     });
+
+    store.scheduleWorkspaceHydration({
+      workspaceId: synced.workspace.workspaceId,
+      sessionId: selectedSessionId,
+      path: synced.workspace.path,
+      displayName: synced.workspace.displayName ?? synced.workspace.path,
+      refreshWorktrees: true,
+      skipSync: true,
+    });
+
+    return snapshot;
   });
 }
 
@@ -99,12 +105,28 @@ export async function selectWorkspace(store: AppStoreInternals, workspaceId: str
     await store.cancelPendingDialogsForSession(currentSessionRef);
   }
 
-  return syncWorkspace(store, workspaceId, {
-    selectedWorkspaceId: workspaceId,
-    selectedSessionId: store.state.selectedWorkspaceId === workspaceId ? store.state.selectedSessionId : "",
-    clearLastError: true,
-    refreshWorktrees: true,
-    activeView: "threads",
+  const selectedSessionId =
+    store.state.selectedWorkspaceId === workspaceId && store.state.selectedSessionId
+      ? store.state.selectedSessionId
+      : (workspace.sessions.find((session) => !session.archivedAt)?.id ?? workspace.sessions[0]?.id ?? "");
+
+  return store.withErrorHandling(async () => {
+    // Instant UI: switch selection before catalog/runtime hydration.
+    const snapshot = store.applyFastWorkspaceSelection({
+      selectedWorkspaceId: workspaceId,
+      selectedSessionId,
+      activeView: "threads",
+    });
+
+    store.scheduleWorkspaceHydration({
+      workspaceId,
+      sessionId: selectedSessionId,
+      path: workspace.path,
+      displayName: workspace.name,
+      refreshWorktrees: true,
+    });
+
+    return snapshot;
   });
 }
 
@@ -266,6 +288,7 @@ export async function syncWorkspace(
 
   return store.withErrorHandling(async () => {
     await store.driver.syncWorkspace(workspace.path, workspace.name);
+    store.markWorkspaceSynced(workspace.path);
     return store.refreshState(refreshOptions);
   });
 }

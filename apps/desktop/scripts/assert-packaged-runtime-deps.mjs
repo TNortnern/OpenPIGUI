@@ -51,6 +51,7 @@ const requiredPackages = [
   "cross-spawn",
   "data-uri-to-buffer",
   "diff",
+  "electron-updater",
   "glob",
   "highlight.js",
   "hosted-git-info",
@@ -83,7 +84,17 @@ const requiredPackages = [
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
-const packagePlatform = (process.env.PI_APP_PACKAGE_PLATFORM ?? process.platform).trim().toLowerCase();
+const cliArgs = process.argv.slice(2);
+const verifyReleaseUpdateArtifactsOnly = cliArgs.includes("--verify-release-update-artifacts");
+const cliPlatformArg = cliArgs.find((arg) => arg.startsWith("--platform="))?.slice("--platform=".length);
+const packagePlatform = (cliPlatformArg ?? process.env.PI_APP_PACKAGE_PLATFORM ?? process.platform).trim().toLowerCase();
+
+if (verifyReleaseUpdateArtifactsOnly) {
+  verifyReleaseUpdateArtifacts(desktopDir, packagePlatform);
+  console.log(`Verified release update metadata for ${packagePlatform}`);
+  process.exit(0);
+}
+
 const asarPath = resolveAsarPath(desktopDir, packagePlatform);
 const notificationHelperPath =
   packagePlatform === "darwin"
@@ -160,6 +171,59 @@ try {
 }
 
 console.log(`Verified packaged runtime dependencies in ${asarPath}`);
+
+function verifyReleaseUpdateArtifacts(desktopDir, packagePlatform) {
+  const releaseDir = path.join(desktopDir, "release");
+  if (!existsSync(releaseDir)) {
+    throw new Error(`Release directory not found at ${releaseDir}. Run the packaging step first.`);
+  }
+
+  const files = readdirSync(releaseDir);
+  const hasMatch = (pattern) => files.some((name) => pattern.test(name));
+
+  if (packagePlatform === "darwin") {
+    if (!hasMatch(/^latest-mac.*\.yml$/)) {
+      throw new Error("Missing mac auto-update metadata (latest-mac.yml) in release output.");
+    }
+    if (!hasMatch(/\.zip$/)) {
+      throw new Error("Missing mac ZIP auto-update artifact in release output.");
+    }
+    if (!hasMatch(/\.zip\.blockmap$/)) {
+      throw new Error("Missing mac ZIP blockmap sidecar in release output.");
+    }
+    return;
+  }
+
+  if (packagePlatform === "linux") {
+    if (!hasMatch(/^latest-linux.*\.yml$/)) {
+      throw new Error("Missing Linux auto-update metadata (latest-linux*.yml) in release output.");
+    }
+    if (!hasMatch(/\.AppImage$/)) {
+      throw new Error("Missing Linux AppImage auto-update artifact in release output.");
+    }
+    if (!hasMatch(/\.AppImage\.zsync$/)) {
+      console.warn(
+        "Linux AppImage .zsync sidecar missing; continuing with AppImage + latest-linux*.yml (embedded block map).",
+      );
+    }
+    return;
+  }
+
+  if (packagePlatform === "win32") {
+    if (!hasMatch(/^latest\.yml$/)) {
+      throw new Error("Missing Windows auto-update metadata (latest.yml) in release output.");
+    }
+    if (!hasMatch(/\.exe$/)) {
+      throw new Error("Missing Windows NSIS auto-update artifact in release output.");
+    }
+    if (!hasMatch(/\.exe\.blockmap$/)) {
+      throw new Error("Missing Windows NSIS blockmap sidecar in release output.");
+    }
+    return;
+  }
+
+  throw new Error(`Unsupported release update artifact target: ${packagePlatform}`);
+}
 
 function resolveAsarPath(desktopDir, packagePlatform) {
   if (packagePlatform === "darwin") {

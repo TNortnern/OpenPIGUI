@@ -33,7 +33,10 @@ import { NotificationManager } from "./notification-manager";
 import {
   NotificationPermissionService,
 } from "./notification-permission";
-import { checkForUpdate, initUpdateChecker, openReleasesPage } from "./update-checker";
+import { createUpdateServiceEnablement, createInitialUpdateState } from "./update-service";
+import { createElectronUpdaterAdapter } from "./update-adapter";
+import { createUpdateTestAdapter, getUpdateTestAdapter, isUpdateFakeAdapterEnabled } from "./update-test-adapter";
+import { UpdateIpcBridge } from "./update-ipc-bridge";
 import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
 import { BrowserPanelService } from "./browser-panel-service";
@@ -47,6 +50,7 @@ import type {
 import { isValidBrowserBounds } from "../src/browser-model";
 import {
   desktopIpc,
+  desktopCommands,
   getDesktopCommandFromShortcut,
   type CustomProviderConfig,
   type CustomProviderProbeInput,
@@ -102,7 +106,10 @@ const stopPublishingStateByWebContentsId = new Map<number, () => void>();
 const stopPublishingSelectedTranscriptByWebContentsId = new Map<number, () => void>();
 const stopTrackingWindowActivationByWebContentsId = new Map<number, () => void>();
 let stopNotifications: (() => void) | undefined;
-let stopUpdateChecker: (() => void) | undefined;
+let stopUpdateBridge: (() => void) | undefined;
+let updateBridge: UpdateIpcBridge | undefined;
+let installUpdateAfterFlush = false;
+let quitFlushInProgress = false;
 let stopPruningTerminals: (() => void) | undefined;
 let retainedTerminalWorkspacePathSignature = "";
 const terminalFocusedWebContentsIds = new Set<number>();
@@ -874,6 +881,7 @@ async function addPickedWorkspace(window: BrowserWindow | null | undefined, work
   if (!nextState.selectedWorkspaceId) {
     return nextState;
   }
+  // addWorkspace already switches to new-thread; avoid a second persist/emit round-trip.
   const newThreadState =
     nextState.activeView === "new-thread" ? nextState : await store.setActiveView("new-thread");
   if (window) {
@@ -891,59 +899,47 @@ async function pickWorkspaceViaDialog(parentWindow?: BrowserWindow | null): Prom
   return runWindowScopedForWindow(window, () => addPickedWorkspace(window, workspacePath));
 }
 
+function initUpdateBridge(): () => void {
+  const fakeAdapterEnabled = isUpdateFakeAdapterEnabled();
+  const enabled = fakeAdapterEnabled || createUpdateServiceEnablement(process.env, app.isPackaged);
+  const bridge = UpdateIpcBridge.create({
+    adapter: fakeAdapterEnabled ? createUpdateTestAdapter() : createElectronUpdaterAdapter(),
+    currentVersion: app.getVersion(),
+    enabled,
+    getWindows: () =>
+      [...appWindows].map((window) => ({
+        id: window.webContents.id,
+        isDestroyed: () => window.isDestroyed() || window.webContents.isDestroyed(),
+        send: (channel, payload) => {
+          if (canPublishToWindow(window)) {
+            window.webContents.send(channel, payload);
+          }
+        },
+      })),
+    canPublishToWindow: (window) => !window.isDestroyed(),
+    stateChangedChannel: desktopIpc.updateStateChanged,
+  });
+  bridge.start();
+  updateBridge = bridge;
+  return () => {
+    bridge.stop();
+    if (updateBridge === bridge) {
+      updateBridge = undefined;
+    }
+  };
+}
+
 async function runManualUpdateCheck(): Promise<void> {
-  const window = mainWindow && canPublishToWindow(mainWindow) ? mainWindow : undefined;
-  const showDialog = (options: MessageBoxOptions) =>
-    window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options);
-
-  try {
-    const result = await checkForUpdate();
-
-    if (result.status === "update-available") {
-      // The manual menu path always confirms with a dialog — a notification may
-      // be silently suppressed if the OS permission is denied.
-      const choice = await showDialog({
-        type: "info",
-        title: "pi-gui",
-        message: `Version ${result.latestVersion} is available.`,
-        detail: `You have ${result.currentVersion}.`,
-        buttons: ["Download", "Later"],
-        defaultId: 0,
-        cancelId: 1,
-      });
-      if (choice.response === 0) {
-        await openReleasesPage();
-      }
-      return;
+  const window = getForegroundAppWindow() ?? (mainWindow && canPublishToWindow(mainWindow) ? mainWindow : null);
+  if (window) {
+    if (window.isMinimized()) {
+      window.restore();
     }
-
-    if (result.status === "up-to-date") {
-      await showDialog({
-        type: "info",
-        title: "pi-gui",
-        message: `You're up to date on version ${result.currentVersion}.`,
-        buttons: ["OK"],
-      });
-      return;
-    }
-
-    await showDialog({
-      type: "warning",
-      title: "pi-gui",
-      message: "Could not check for updates right now.",
-      detail: result.message,
-      buttons: ["OK"],
-    });
-  } catch (error) {
-    console.error("pi-gui: manual update check failed:", error);
-    await showDialog({
-      type: "warning",
-      title: "pi-gui",
-      message: "Could not check for updates right now.",
-      detail: error instanceof Error ? error.message : String(error),
-      buttons: ["OK"],
-    }).catch(() => undefined);
+    window.show();
+    window.focus();
+    window.webContents.send(desktopIpc.appCommand, desktopCommands.openSettings);
   }
+  await updateBridge?.checkForUpdates();
 }
 
 function installApplicationMenu(): void {
@@ -1171,8 +1167,24 @@ app.whenReady().then(async () => {
     },
   );
   stopNotifications = notificationManager.start();
-  if (!isDev) {
-    stopUpdateChecker = initUpdateChecker();
+  stopUpdateBridge = initUpdateBridge();
+  if (process.env.PI_APP_TEST_MODE) {
+    const hooks = (globalThis as { __PI_APP_TEST_HOOKS?: Record<string, unknown> }).__PI_APP_TEST_HOOKS ?? {};
+    Object.assign(hooks, {
+      emitUpdateAdapterEvent: (event: string, payload?: unknown) => {
+        getUpdateTestAdapter().emit(event, payload);
+      },
+      simulateUpdateEventForTest: (event: import("./update-service").UpdaterEvent) => {
+        if (!updateBridge) {
+          throw new Error("Update bridge is unavailable for tests");
+        }
+        updateBridge.service.simulateEventForTest(event);
+        updateBridge.broadcast(updateBridge.getUpdateState());
+      },
+      getUpdateStateForTest: () => updateBridge?.getUpdateState(),
+      getUpdateRestartCalls: () => getUpdateTestAdapter().quitCalls,
+    });
+    (globalThis as { __PI_APP_TEST_HOOKS?: Record<string, unknown> }).__PI_APP_TEST_HOOKS = hooks;
   }
 
   ipcMain.handle(desktopIpc.ping, () =>
@@ -1508,7 +1520,10 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(
     desktopIpc.submitComposer,
-    (event, text: string, options?: { readonly deliverAs?: "steer" | "followUp" }) =>
+    (event, text: string, options?: {
+      readonly deliverAs?: "steer" | "followUp";
+      readonly clientMessageId?: string;
+    }) =>
       runWindowScopedForEvent(event, () => store.submitComposer(text, options)),
   );
   ipcMain.handle(desktopIpc.getSessionTree, (_event, target: WorkspaceSessionTarget) =>
@@ -1556,6 +1571,20 @@ app.whenReady().then(async () => {
     }
     await stageFile(workspacePath, filePath);
   });
+  ipcMain.handle(desktopIpc.getUpdateState, () =>
+    updateBridge?.getUpdateState() ?? createInitialUpdateState(app.getVersion(), { enabled: false }),
+  );
+  ipcMain.handle(desktopIpc.checkForUpdates, () => updateBridge?.checkForUpdates() ?? Promise.resolve(
+    createInitialUpdateState(app.getVersion(), { enabled: false }),
+  ));
+  ipcMain.handle(desktopIpc.restartToUpdate, () => {
+    const result = updateBridge?.restartToUpdate() ?? { accepted: false as const };
+    if (result.accepted) {
+      installUpdateAfterFlush = true;
+      app.quit();
+    }
+    return result;
+  });
   ipcMain.handle(desktopIpc.toggleWindowMaximize, (event) => {
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
@@ -1588,8 +1617,9 @@ app.on("window-all-closed", () => {
     notificationManager = undefined;
     notificationPermissionService?.dispose();
     notificationPermissionService = undefined;
-    stopUpdateChecker?.();
-    stopUpdateChecker = undefined;
+    stopUpdateBridge?.();
+    stopUpdateBridge = undefined;
+    updateBridge = undefined;
     stopPruningTerminals?.();
     stopPruningTerminals = undefined;
     terminalService?.dispose();
@@ -1604,24 +1634,34 @@ app.on("before-quit", (event) => {
   notificationManager = undefined;
   notificationPermissionService?.dispose();
   notificationPermissionService = undefined;
-  stopUpdateChecker?.();
-  stopUpdateChecker = undefined;
   stopPruningTerminals?.();
   stopPruningTerminals = undefined;
   terminalService?.dispose();
   terminalService = undefined;
-  if (quittingAfterStoreFlush || !store) {
+  if (!store) {
+    stopUpdateBridge?.();
+    stopUpdateBridge = undefined;
+    updateBridge = undefined;
+    return;
+  }
+  if (quitFlushInProgress) {
+    event.preventDefault();
+    return;
+  }
+  if (quittingAfterStoreFlush) {
+    stopUpdateBridge?.();
+    stopUpdateBridge = undefined;
+    updateBridge = undefined;
     return;
   }
 
   event.preventDefault();
-  quittingAfterStoreFlush = true;
+  quitFlushInProgress = true;
   const flush = store
     .flushPersistence()
     .catch((error) => {
       console.error("pi-gui: persistence flush failed during quit:", error);
     });
-  // Never let a hung flush block quit forever — quit after a bounded wait.
   const flushDeadline = new Promise<void>((resolve) => {
     setTimeout(() => {
       console.warn("pi-gui: persistence flush timed out during quit; quitting anyway.");
@@ -1629,6 +1669,15 @@ app.on("before-quit", (event) => {
     }, QUIT_FLUSH_TIMEOUT_MS);
   });
   void Promise.race([flush, flushDeadline]).finally(() => {
+    quitFlushInProgress = false;
+    quittingAfterStoreFlush = true;
+    if (installUpdateAfterFlush) {
+      updateBridge?.installDownloadedUpdate();
+      return;
+    }
+    stopUpdateBridge?.();
+    stopUpdateBridge = undefined;
+    updateBridge = undefined;
     app.quit();
   });
 });

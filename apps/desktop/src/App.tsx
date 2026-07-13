@@ -18,8 +18,13 @@ import {
 import { formatRelativeTime } from "./string-utils";
 import { ComposerPanel } from "./composer-panel";
 import { DiffPanel, type DiffPanelFileRequest, type FileWorkbenchContext } from "./diff-panel";
-import { buildModelOptions } from "./composer-commands";
-import { parseTreeComposerCommand } from "./composer-commands";
+import { buildModelOptions, hasRuntimeSlashCommand, parseComposerCommand, parseTreeComposerCommand } from "./composer-commands";
+import {
+  createOptimisticUserMessage,
+  mergeOptimisticTranscript,
+  reconcileOptimisticUserMessages,
+  type OptimisticUserMessage,
+} from "./optimistic-composer";
 import {
   desktopCommands,
   getDesktopCommandFromShortcut,
@@ -27,6 +32,7 @@ import {
   type CustomProviderConfig,
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
+  type UpdateState,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { ModelSelector } from "./model-selector";
@@ -60,11 +66,18 @@ import {
 import { ConversationTimeline, VIRTUALIZATION_THRESHOLD } from "./conversation-timeline";
 import { useSlashMenu } from "./hooks/use-slash-menu";
 import { useMentionMenu } from "./hooks/use-mention-menu";
+import { useSkillMenu } from "./hooks/use-skill-menu";
+import { useComposerDictation } from "./hooks/use-composer-dictation";
 import { useThreadSearch } from "./hooks/use-thread-search";
 import { useWorkspaceMenu } from "./hooks/use-workspace-menu";
 import { buildExtensionDockModel, ExtensionDialog, hasExtensionDockContent } from "./extension-session-ui";
 import { TreeModal } from "./tree-modal";
 import { ForkModal } from "./fork-modal";
+import {
+  WorkingAgentInspector,
+  type WorkingAgentInspectorTarget,
+} from "./working-agent-inspector";
+import type { WorkingAgentEntry } from "./composer-status-chrome";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { applyThemePresetToRoot } from "./theme-presets";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
@@ -74,6 +87,12 @@ import {
   extractFilesFromDataTransfer,
   readComposerAttachmentsFromFiles,
 } from "./composer-attachments";
+import {
+  appendComposerContextBlock,
+  formatAttachedChatBlock,
+  formatTerminalSelectionBlock,
+  readThreadDropFromDataTransfer,
+} from "./composer-context-blocks";
 import { moveComposerHistory, readComposerHistory, rememberComposerHistory, type ComposerHistoryCursor } from "./composer-history";
 
 const TIMELINE_SCROLL_INTENT_WINDOW_MS = 750;
@@ -223,7 +242,20 @@ export default function App() {
   const [newThreadModelId, setNewThreadModelId] = useState<string | undefined>();
   const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
   const [newThreadComposerError, setNewThreadComposerError] = useState<string | undefined>();
+  const [inspectedWorkingAgent, setInspectedWorkingAgent] = useState<WorkingAgentEntry | null>(null);
+  // Remember the last model the user actually used so New thread doesn't snap back to the workspace default.
+  const lastUsedModelRef = useRef<{
+    provider: string;
+    modelId: string;
+    thinkingLevel?: string;
+  } | null>(null);
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
+  const [updateState, setUpdateState] = useState<UpdateState>(() => ({
+    phase: "disabled",
+    currentVersion: "0.0.0",
+    canRetry: false,
+    canRestart: false,
+  }));
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<DesktopNotificationPermissionStatus>("unknown");
   const [notificationPermissionPending, setNotificationPermissionPending] = useState(false);
@@ -329,6 +361,21 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const piApi = window.piApp;
+    if (!piApi) {
+      return undefined;
+    }
+
+    void piApi.getUpdateState().then((state) => {
+      setUpdateState(state);
+    });
+
+    return piApi.onUpdateState((state) => {
+      setUpdateState(state);
+    });
+  }, []);
+
+  useEffect(() => {
     applyThemePresetToRoot(document.documentElement, snapshot?.themePresetId ?? "default", resolvedTheme);
   }, [resolvedTheme, snapshot?.themePresetId]);
 
@@ -425,7 +472,32 @@ export default function App() {
     provider: resolvedNewThreadProvider,
     modelId: resolvedNewThreadModelId,
   });
+
+  useEffect(() => {
+    if (!resolvedSessionProvider || !resolvedSessionModelId) {
+      return;
+    }
+    lastUsedModelRef.current = {
+      provider: resolvedSessionProvider,
+      modelId: resolvedSessionModelId,
+      ...(resolvedSessionThinkingLevel ? { thinkingLevel: resolvedSessionThinkingLevel } : {}),
+    };
+  }, [resolvedSessionProvider, resolvedSessionModelId, resolvedSessionThinkingLevel]);
+
+  useEffect(() => {
+    if (!newThreadProvider || !newThreadModelId) {
+      return;
+    }
+    lastUsedModelRef.current = {
+      provider: newThreadProvider,
+      modelId: newThreadModelId,
+      ...(newThreadThinkingLevel ? { thinkingLevel: newThreadThinkingLevel } : {}),
+    };
+  }, [newThreadProvider, newThreadModelId, newThreadThinkingLevel]);
   const [attachmentsClearedOnSubmit, setAttachmentsClearedOnSubmit] = useState(false);
+  const [optimisticUserMessagesBySession, setOptimisticUserMessagesBySession] = useState<
+    Record<string, readonly OptimisticUserMessage[]>
+  >({});
   const composerAttachments = attachmentsClearedOnSubmit ? [] : (snapshot?.composerAttachments ?? []);
   const queuedComposerMessages = snapshot?.queuedComposerMessages ?? [];
   const editingQueuedMessageId = snapshot?.editingQueuedMessageId;
@@ -450,8 +522,149 @@ export default function App() {
     selectedTranscript.sessionId === selectedSession.id
       ? selectedTranscript
       : null;
-  const activeTranscript = selectedTranscriptForSession?.transcript ?? [];
+  const serverTranscript = selectedTranscriptForSession?.transcript ?? [];
+  const optimisticUserMessages = optimisticUserMessagesBySession[selectedSessionKey] ?? [];
+  const activeTranscript = useMemo(
+    () => mergeOptimisticTranscript(serverTranscript, optimisticUserMessages),
+    [optimisticUserMessages, serverTranscript],
+  );
   const isTranscriptLoading = Boolean(selectedSession) && !selectedTranscriptForSession;
+
+  const inspectedAgentTarget = useMemo((): WorkingAgentInspectorTarget | null => {
+    if (!inspectedWorkingAgent || !selectedSession || !selectedWorkspace) {
+      return null;
+    }
+
+    const child = (snapshot?.orchestrationChildren ?? []).find(
+      (entry) =>
+        entry.id === inspectedWorkingAgent.childThreadId ||
+        entry.childSessionId === inspectedWorkingAgent.id ||
+        entry.childSessionId === inspectedWorkingAgent.sessionId,
+    );
+
+    if (child) {
+      const modelLabel = [child.resolvedProvider ?? child.requestedProvider, child.resolvedModel ?? child.requestedModel]
+        .filter(Boolean)
+        .join("/");
+      return {
+        id: child.id,
+        title: child.title || "Child agent",
+        statusLabel: child.status,
+        prompt: child.goal || inspectedWorkingAgent.prompt || "",
+        modelLabel: modelLabel || undefined,
+        messages: child.transcript.map((message) => ({
+          id: message.id,
+          role:
+            message.role === "parent"
+              ? "user"
+              : message.role === "system"
+                ? "system"
+                : "assistant",
+          text: message.text,
+          createdAt: message.createdAt,
+        })),
+        streaming: child.status === "running",
+        canFollowUp: true,
+        followUpHint: "Send follow-up to subagent…",
+        kind: "child",
+        childThreadId: child.id,
+        workspaceId: child.childWorkspaceId,
+        sessionId: child.childSessionId,
+      };
+    }
+
+    if (inspectedWorkingAgent.kind === "queued" || inspectedWorkingAgent.id.startsWith("queued:")) {
+      return {
+        id: inspectedWorkingAgent.id,
+        title: inspectedWorkingAgent.title,
+        statusLabel: "Queued",
+        prompt: inspectedWorkingAgent.prompt || inspectedWorkingAgent.detail,
+        messages: [],
+        streaming: false,
+        canFollowUp: false,
+        followUpHint: "Edit or steer this queued message from the composer queue.",
+        kind: "queued",
+        workspaceId: selectedWorkspace.id,
+        sessionId: selectedSession.id,
+      };
+    }
+
+    const isCurrentSession = inspectedWorkingAgent.id === selectedSession.id
+      || inspectedWorkingAgent.sessionId === selectedSession.id;
+    const lastUser = [...activeTranscript].reverse().find(
+      (item) => item.kind === "message" && item.role === "user",
+    );
+    const messages: Array<{
+      id: string;
+      role: "user" | "assistant" | "tool";
+      text: string;
+      createdAt: string;
+    }> = [];
+    for (const item of activeTranscript) {
+      if (item.kind === "message") {
+        messages.push({
+          id: item.id,
+          role: item.role === "user" ? "user" : "assistant",
+          text: item.text,
+          createdAt: item.createdAt,
+        });
+        continue;
+      }
+      if (item.kind === "tool") {
+        messages.push({
+          id: item.id,
+          role: "tool",
+          text: `${item.label || item.toolName}${item.status === "running" ? " · running" : ""}`,
+          createdAt: item.createdAt,
+        });
+      }
+    }
+
+    return {
+      id: inspectedWorkingAgent.id,
+      title: inspectedWorkingAgent.title || selectedSession.title || "Agent",
+      statusLabel: isCurrentSession && selectedSession.status === "running" ? "Running" : inspectedWorkingAgent.detail,
+      prompt: inspectedWorkingAgent.prompt
+        || (lastUser && lastUser.kind === "message" ? lastUser.text : "")
+        || "",
+      modelLabel: inspectedWorkingAgent.modelLabel
+        || (selectedSession.config?.provider && selectedSession.config.modelId
+          ? `${selectedSession.config.provider}/${selectedSession.config.modelId}`
+          : undefined),
+      thinkingLabel: selectedSession.config?.thinkingLevel
+        ? `${selectedSession.config.thinkingLevel} thinking`
+        : undefined,
+      messages: isCurrentSession ? messages : [],
+      streaming: isCurrentSession && selectedSession.status === "running",
+      canFollowUp: isCurrentSession,
+      followUpHint: isCurrentSession
+        ? "Send follow-up…"
+        : "Select this agent session to send follow-ups (peer transcript not mirrored yet).",
+      kind: "session",
+      workspaceId: inspectedWorkingAgent.workspaceId ?? selectedWorkspace.id,
+      sessionId: inspectedWorkingAgent.sessionId ?? inspectedWorkingAgent.id,
+    };
+  }, [
+    activeTranscript,
+    inspectedWorkingAgent,
+    selectedSession,
+    selectedWorkspace,
+    snapshot?.orchestrationChildren,
+  ]);
+
+  useEffect(() => {
+    if (!selectedSessionKey || optimisticUserMessages.length === 0) {
+      return;
+    }
+    const next = reconcileOptimisticUserMessages(optimisticUserMessages, serverTranscript);
+    if (next.length === optimisticUserMessages.length) {
+      return;
+    }
+    setOptimisticUserMessagesBySession((current) => ({
+      ...current,
+      [selectedSessionKey]: next,
+    }));
+  }, [optimisticUserMessages, selectedSessionKey, serverTranscript]);
   const showSchemaSkewNotice =
     selectedTranscriptForSession?.schemaInfo?.writtenByNewerRuntime === true &&
     Boolean(selectedSessionKey) &&
@@ -859,6 +1072,24 @@ export default function App() {
     toggleRightRailMode("terminal");
   }, [toggleRightRailMode]);
 
+  const showTerminal = useCallback(() => {
+    if (isTerminalVisibleForSelectedThread) {
+      return;
+    }
+    updateActiveRailSession((current) => ({
+      ...current,
+      open: true,
+      mode: "terminal",
+    }));
+  }, [isTerminalVisibleForSelectedThread, updateActiveRailSession]);
+
+  const handleStopRun = useCallback(() => {
+    if (!api) {
+      return;
+    }
+    void updateSnapshot(api, setSnapshot, () => api.cancelCurrentRun());
+  }, [api]);
+
   const toggleBrowserPanel = useCallback(() => {
     toggleRightRailMode("browser");
   }, [toggleRightRailMode]);
@@ -1104,6 +1335,19 @@ export default function App() {
     onEnableExtension: enableSelectedMentionExtension,
   });
 
+  const skillMenu = useSkillMenu({
+    composerDraft,
+    setComposerDraft,
+    composerRef,
+    runtime: selectedRuntime,
+  });
+
+  const composerDictation = useComposerDictation({
+    composerRef,
+    composerDraft,
+    setComposerDraft,
+  });
+
   const newThreadSlashMenu = useSlashMenu({
     composerDraft: newThreadPrompt,
     setComposerDraft: updateNewThreadPrompt,
@@ -1161,6 +1405,19 @@ export default function App() {
     runtime: newThreadRuntime,
     api,
     onEnableExtension: enableNewThreadMentionExtension,
+  });
+
+  const newThreadSkillMenu = useSkillMenu({
+    composerDraft: newThreadPrompt,
+    setComposerDraft: setNewThreadPrompt,
+    composerRef: newThreadComposerRef,
+    runtime: newThreadRuntime,
+  });
+
+  const newThreadDictation = useComposerDictation({
+    composerRef: newThreadComposerRef,
+    composerDraft: newThreadPrompt,
+    setComposerDraft: setNewThreadPrompt,
   });
 
   const wsMenu = useWorkspaceMenu({
@@ -1260,6 +1517,35 @@ export default function App() {
     setPendingNewThreadWorkspaceId("");
   }, [pendingNewThreadWorkspaceId, rootWorkspaceOptions, snapshot]);
 
+  const seedNewThreadModel = (runtime: RuntimeSnapshot | undefined = newThreadRuntime) => {
+    const candidate =
+      resolvedSessionProvider && resolvedSessionModelId
+        ? {
+            provider: resolvedSessionProvider,
+            modelId: resolvedSessionModelId,
+            thinkingLevel: resolvedSessionThinkingLevel,
+          }
+        : lastUsedModelRef.current;
+    if (!candidate) {
+      setNewThreadProvider(undefined);
+      setNewThreadModelId(undefined);
+      setNewThreadThinkingLevel(undefined);
+      return;
+    }
+    const available = buildModelOptions(runtime).some(
+      (model) => model.providerId === candidate.provider && model.modelId === candidate.modelId,
+    );
+    if (!available) {
+      setNewThreadProvider(undefined);
+      setNewThreadModelId(undefined);
+      setNewThreadThinkingLevel(undefined);
+      return;
+    }
+    setNewThreadProvider(candidate.provider);
+    setNewThreadModelId(candidate.modelId);
+    setNewThreadThinkingLevel(candidate.thinkingLevel);
+  };
+
   const resetNewThreadSurface = (workspaceId?: string) => {
     const nextWorkspaceId =
       (workspaceId && (
@@ -1275,9 +1561,14 @@ export default function App() {
     setNewThreadEnvironment("local");
     setNewThreadPrompt("");
     setNewThreadAttachments([]);
-    setNewThreadProvider(undefined);
-    setNewThreadModelId(undefined);
-    setNewThreadThinkingLevel(undefined);
+    const runtimeForSeed =
+      nextWorkspaceId && snapshot
+        ? getEffectiveModelRuntime(
+            snapshot,
+            rootWorkspaceOptions.find((workspace) => workspace.id === nextWorkspaceId) ?? newThreadWorkspace,
+          )
+        : newThreadRuntime;
+    seedNewThreadModel(runtimeForSeed);
     setNewThreadComposerError(undefined);
   };
 
@@ -1756,6 +2047,9 @@ export default function App() {
             updateActiveRailSession((current) => applyRightRailTakeoverToggle(current));
           }}
           onHide={closeRightRail}
+          onAddSelectionToChat={(text) => {
+            insertComposerContextBlock(formatTerminalSelectionBlock(text));
+          }}
         />
       ) : rightRailMode === "browser" ? (
         <BrowserPanel
@@ -1779,7 +2073,6 @@ export default function App() {
               provider={resolvedSessionProvider}
               modelId={resolvedSessionModelId}
               thinkingLevel={resolvedSessionThinkingLevel}
-              disabled={selectedSession.status === "running"}
               unselectedModelLabel={selectedSessionModelOnboarding.unselectedModelLabel}
               emptyModelTitle={selectedSessionModelOnboarding.emptyModelTitle}
               onSetModel={(provider, modelId) => {
@@ -1792,6 +2085,13 @@ export default function App() {
                   thinkingLevel as NonNullable<RuntimeSnapshot["settings"]["defaultThinkingLevel"]>,
                 ));
               }}
+              onSetScopedModelPatterns={(patterns) => {
+                const workspaceId = selectedWorkspace.rootWorkspaceId ?? selectedWorkspace.id;
+                void updateSnapshot(api, setSnapshot, () => api.setScopedModelPatterns(workspaceId, patterns));
+              }}
+              onOpenModelSettings={(section) =>
+                openSettings(selectedWorkspace.rootWorkspaceId ?? selectedWorkspace.id, section)
+              }
             />
           )}
           onSubmitDesignPrompt={submitBrowserDesignPrompt}
@@ -1881,16 +2181,25 @@ export default function App() {
   const openNewThreadSurface = (workspaceId?: string) => {
     setPendingNewThreadWorkspaceId("");
     resetNewThreadSurface(workspaceId);
-    setActiveView("new-thread");
+    void updateSnapshot(api, setSnapshot, async () => {
+      if (workspaceId) {
+        await api.selectWorkspace(workspaceId);
+      }
+      return api.setActiveView("new-thread");
+    });
   };
 
   const handleSelectNewThreadWorkspace = (workspaceId: string) => {
     setPendingNewThreadWorkspaceId("");
     setNewThreadRootWorkspaceId(workspaceId);
     setNewThreadAttachments([]);
-    setNewThreadProvider(undefined);
-    setNewThreadModelId(undefined);
-    setNewThreadThinkingLevel(undefined);
+    const runtimeForSeed = snapshot
+      ? getEffectiveModelRuntime(
+          snapshot,
+          rootWorkspaceOptions.find((workspace) => workspace.id === workspaceId),
+        )
+      : undefined;
+    seedNewThreadModel(runtimeForSeed);
     setNewThreadComposerError(undefined);
   };
 
@@ -1930,13 +2239,41 @@ export default function App() {
     }
 
     const previousDraft = composerDraft;
+    const previousAttachments = composerAttachments;
+    const isRunning = selectedSession.status === "running";
+    const deliverAs = isRunning ? (options.deliverAs ?? "followUp") : undefined;
+    const clientMessageId = crypto.randomUUID();
+    const looksLikeCommand =
+      Boolean(parseComposerCommand(previousDraft)) ||
+      hasRuntimeSlashCommand(previousDraft, selectedRuntime, selectedSessionCommands);
+    // Follow-ups stay in the composer queue until the run dequeues them — don't fake a timeline bubble.
+    const shouldShowOptimisticBubble = (!isRunning || deliverAs === "steer") && !looksLikeCommand;
+
     rememberComposerHistory(selectedSessionKey, previousDraft);
     composerHistoryCursorRef.current = null;
     setComposerDraft("");
     setAttachmentsClearedOnSubmit(true);
+
+    if (shouldShowOptimisticBubble && selectedSessionKey) {
+      const pending = createOptimisticUserMessage({
+        id: clientMessageId,
+        text: previousDraft.trim(),
+        attachments: previousAttachments,
+      });
+      setOptimisticUserMessagesBySession((current) => ({
+        ...current,
+        [selectedSessionKey]: [...(current[selectedSessionKey] ?? []), pending],
+      }));
+      pinnedToBottomRef.current = true;
+      requestPinnedBottomAlignment("smooth");
+    }
+
     void (async () => {
       const nextState = await updateSnapshot(api, setSnapshot, () =>
-        api.submitComposer(previousDraft, selectedSession.status === "running" ? { deliverAs: options.deliverAs ?? "followUp" } : undefined),
+        api.submitComposer(previousDraft, {
+          ...(deliverAs ? { deliverAs } : {}),
+          ...(shouldShowOptimisticBubble ? { clientMessageId } : {}),
+        }),
       );
       // Only apply the resolved draft if the user hasn't typed into the composer during the
       // in-flight submit; otherwise their new input would be clobbered.
@@ -1945,6 +2282,12 @@ export default function App() {
       }
       setAttachmentsClearedOnSubmit(false);
     })().catch(() => {
+      if (shouldShowOptimisticBubble && selectedSessionKey) {
+        setOptimisticUserMessagesBySession((current) => ({
+          ...current,
+          [selectedSessionKey]: (current[selectedSessionKey] ?? []).filter((message) => message.id !== clientMessageId),
+        }));
+      }
       if (composerDraftRef.current === "") {
         setComposerDraft(previousDraft);
       }
@@ -2003,12 +2346,38 @@ export default function App() {
   };
 
   const handleAttachmentDrop = (event: DragEvent<HTMLDivElement>, onFiles: (files: File[]) => void) => {
+    const threadPayload = readThreadDropFromDataTransfer(event.dataTransfer);
+    if (threadPayload) {
+      event.preventDefault();
+      if (
+        snapshot?.activeView !== "new-thread" &&
+        selectedSession &&
+        threadPayload.sessionId === selectedSession.id
+      ) {
+        return;
+      }
+      insertComposerContextBlock(formatAttachedChatBlock(threadPayload));
+      return;
+    }
     event.preventDefault();
     const files = extractFilesFromDataTransfer(event.dataTransfer);
     if (files.length === 0) {
       return;
     }
     onFiles(files);
+  };
+
+  const insertComposerContextBlock = (block: string) => {
+    if (!block.trim()) {
+      return;
+    }
+    if (snapshot?.activeView === "new-thread") {
+      setNewThreadPrompt((current) => appendComposerContextBlock(current, block));
+      focusNewThreadComposer();
+      return;
+    }
+    setComposerDraft((current) => appendComposerContextBlock(current, block));
+    focusComposer();
   };
 
   const handleComposerPaste = (event: ClipboardEvent<HTMLDivElement>) => {
@@ -2079,6 +2448,15 @@ export default function App() {
     if (!selectedWorkspace || !selectedSession) {
       return;
     }
+    lastUsedModelRef.current = {
+      provider,
+      modelId,
+      ...(lastUsedModelRef.current?.thinkingLevel
+        ? { thinkingLevel: lastUsedModelRef.current.thinkingLevel }
+        : resolvedSessionThinkingLevel
+          ? { thinkingLevel: resolvedSessionThinkingLevel }
+          : {}),
+    };
     void updateSnapshot(api, setSnapshot, () =>
       api.setSessionModel(selectedWorkspace.id, selectedSession.id, provider, modelId),
     );
@@ -2087,6 +2465,12 @@ export default function App() {
   const handleSetSessionThinking = (level: string) => {
     if (!selectedWorkspace || !selectedSession) {
       return;
+    }
+    if (lastUsedModelRef.current) {
+      lastUsedModelRef.current = {
+        ...lastUsedModelRef.current,
+        thinkingLevel: level,
+      };
     }
     void updateSnapshot(api, setSnapshot, () =>
       api.setSessionThinkingLevel(
@@ -2381,14 +2765,28 @@ export default function App() {
       ...modelConfig,
     };
     wsMenu.expandWorkspace(newThreadRootWorkspaceId);
+    if (resolvedNewThreadProvider && resolvedNewThreadModelId) {
+      lastUsedModelRef.current = {
+        provider: resolvedNewThreadProvider,
+        modelId: resolvedNewThreadModelId,
+        ...(resolvedNewThreadThinkingLevel ? { thinkingLevel: resolvedNewThreadThinkingLevel } : {}),
+      };
+    }
     void updateSnapshot(api, setSnapshot, () =>
       api.startThread(input),
     ).then(() => {
       setNewThreadPrompt("");
       setNewThreadAttachments([]);
-      setNewThreadProvider(undefined);
-      setNewThreadModelId(undefined);
-      setNewThreadThinkingLevel(undefined);
+      // Keep the model the user just used so the next New thread opens on it.
+      if (resolvedNewThreadProvider) {
+        setNewThreadProvider(resolvedNewThreadProvider);
+      }
+      if (resolvedNewThreadModelId) {
+        setNewThreadModelId(resolvedNewThreadModelId);
+      }
+      if (resolvedNewThreadThinkingLevel) {
+        setNewThreadThinkingLevel(resolvedNewThreadThinkingLevel);
+      }
       setNewThreadEnvironment("local");
     });
   };
@@ -2461,7 +2859,7 @@ export default function App() {
     if (
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
       !event.altKey && !event.metaKey && !event.ctrlKey &&
-      (Boolean(composerHistoryCursorRef.current) || (!mentionMenu.showMentionMenu && !slashMenu.showSlashMenu && !slashMenu.showSlashOptionMenu))
+      (Boolean(composerHistoryCursorRef.current) || (!mentionMenu.showMentionMenu && !skillMenu.showSkillMenu && !slashMenu.showSlashMenu && !slashMenu.showSlashOptionMenu))
     ) {
       const textarea = event.currentTarget;
       const atBoundary = event.key === "ArrowUp"
@@ -2488,6 +2886,10 @@ export default function App() {
     }
 
     if (mentionMenu.handleMentionKeyDown(event)) {
+      return;
+    }
+
+    if (skillMenu.handleSkillKeyDown(event)) {
       return;
     }
 
@@ -2524,6 +2926,10 @@ export default function App() {
     }
 
     if (newThreadMentionMenu.handleMentionKeyDown(event)) {
+      return;
+    }
+
+    if (newThreadSkillMenu.handleSkillKeyDown(event)) {
       return;
     }
 
@@ -2713,7 +3119,15 @@ export default function App() {
           themeMode={snapshot.themeMode}
           resolvedTheme={resolvedTheme}
           onCycleThemeMode={handleCycleThemeMode}
-          onNewThread={() => openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+          onNewThread={(workspaceId) => openNewThreadSurface(workspaceId ?? selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+          updateState={updateState}
+          onRetryUpdate={() => {
+            void api.checkForUpdates();
+          }}
+          onRestartUpdate={() => {
+            void api.restartToUpdate();
+          }}
+          restartUpdateDisabled={Boolean(snapshot.lastError)}
           onSetActiveView={setActiveView}
           onOpenSkills={openSkills}
           onOpenExtensions={openExtensions}
@@ -2781,11 +3195,23 @@ export default function App() {
               showMentionMenu={newThreadMentionMenu.showMentionMenu}
               mentionOptions={newThreadMentionMenu.mentionOptions}
               selectedMentionIndex={newThreadMentionMenu.selectedIndex}
+              showSkillMenu={newThreadSkillMenu.showSkillMenu}
+              skillOptions={newThreadSkillMenu.skillOptions}
+              selectedSkillIndex={newThreadSkillMenu.selectedIndex}
+              onSelectSkill={newThreadSkillMenu.insertSkill}
+              dictating={newThreadDictation.dictating}
+              dictationError={newThreadDictation.dictationError}
+              onToggleDictation={newThreadDictation.toggleDictation}
               onChangePrompt={setNewThreadPrompt}
               onSelectEnvironment={setNewThreadEnvironment}
               onSelectWorkspace={handleSelectNewThreadWorkspace}
               onSetModel={(provider, modelId) => { setNewThreadProvider(provider); setNewThreadModelId(modelId); }}
               onSetThinking={setNewThreadThinkingLevel}
+              onSetScopedModelPatterns={(patterns) => {
+                const workspaceId = newThreadWorkspace?.id;
+                if (!workspaceId || !api) return;
+                void updateSnapshot(api, setSnapshot, () => api.setScopedModelPatterns(workspaceId, patterns));
+              }}
               onOpenModelSettings={(section) => openSettings(newThreadWorkspace?.id, section)}
               onComposerKeyDown={handleNewThreadComposerKeyDown}
               onComposerPaste={handleNewThreadComposerPaste}
@@ -2896,6 +3322,11 @@ export default function App() {
               }}
               onSetModel={handleSetSessionModel}
               onSetThinking={handleSetSessionThinking}
+              onSetScopedModelPatterns={(patterns) => {
+                const workspaceId = selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id;
+                if (!workspaceId || !api) return;
+                void updateSnapshot(api, setSnapshot, () => api.setScopedModelPatterns(workspaceId, patterns));
+              }}
               modelOnboarding={selectedSessionModelOnboarding}
               onOpenModelSettings={(section) =>
                 openSettings(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id, section)
@@ -2903,6 +3334,57 @@ export default function App() {
               onSubmit={submitComposerDraft}
               runningLabel={runningLabel}
               selectedSession={selectedSession}
+              selectedWorkspace={selectedWorkspace}
+              selectedWorktree={selectedWorktree}
+              transcript={activeTranscript}
+              contextUsage={selectedTranscriptForSession?.contextUsage}
+              terminalVisible={isTerminalVisibleForSelectedThread}
+              peerWorkingAgents={(selectedWorkspace?.sessions ?? [])
+                .filter((session) => session.status === "running" && session.id !== selectedSession.id)
+                .map((session) => ({
+                  id: session.id,
+                  title: session.title || "Agent",
+                  detail: "Running",
+                  kind: "running" as const,
+                  workspaceId: selectedWorkspace.id,
+                  sessionId: session.id,
+                  modelLabel: session.config?.provider && session.config.modelId
+                    ? `${session.config.provider}/${session.config.modelId}`
+                    : undefined,
+                }))
+                .concat(
+                  (snapshot?.orchestrationChildren ?? [])
+                    .filter(
+                      (child) =>
+                        (child.status === "running" || child.status === "waiting" || child.status === "queued") &&
+                        child.parentSessionId === selectedSession.id &&
+                        child.childSessionId !== selectedSession.id,
+                    )
+                    .map((child) => ({
+                      id: child.childSessionId,
+                      title: child.title || "Child agent",
+                      detail: child.status === "running" ? (child.latestTranscript || "Running") : child.status,
+                      kind: "running" as const,
+                      childThreadId: child.id,
+                      workspaceId: child.childWorkspaceId,
+                      sessionId: child.childSessionId,
+                      prompt: child.goal,
+                      modelLabel: [child.resolvedProvider ?? child.requestedProvider, child.resolvedModel ?? child.requestedModel]
+                        .filter(Boolean)
+                        .join("/") || undefined,
+                    })),
+                )}
+              onStopRun={handleStopRun}
+              onSelectWorkingAgent={(sessionId) => {
+                if (!selectedWorkspace) {
+                  return;
+                }
+                handleSelectSession({ workspaceId: selectedWorkspace.id, sessionId });
+              }}
+              onInspectWorkingAgent={(agent) => {
+                setInspectedWorkingAgent(agent);
+              }}
+              onShowTerminal={showTerminal}
               lastError={snapshot.lastError}
               selectedSlashCommand={slashMenu.activeSlashOptionCommand ?? slashMenu.selectedSlashCommand}
               selectedSlashOption={slashMenu.selectedSlashOption}
@@ -2920,6 +3402,13 @@ export default function App() {
               selectedMentionIndex={mentionMenu.selectedIndex}
               onSelectMention={mentionMenu.insertMention}
               onEnableMentionExtension={mentionMenu.enableMentionExtension}
+              showSkillMenu={skillMenu.showSkillMenu}
+              skillOptions={skillMenu.skillOptions}
+              selectedSkillIndex={skillMenu.selectedIndex}
+              onSelectSkill={skillMenu.insertSkill}
+              dictating={composerDictation.dictating}
+              dictationError={composerDictation.dictationError}
+              onToggleDictation={composerDictation.toggleDictation}
               extensionDock={selectedExtensionDock}
               extensionDockExpanded={isSelectedExtensionDockExpanded}
               onToggleExtensionDock={handleToggleExtensionDock}
@@ -2945,6 +3434,45 @@ export default function App() {
                 canUseWorktree={Boolean(rootWorkspace)}
                 onClose={closeForkModal}
                 onSubmit={handleForkSubmit}
+              />
+            ) : null}
+            {inspectedAgentTarget ? (
+              <WorkingAgentInspector
+                target={inspectedAgentTarget}
+                onClose={() => setInspectedWorkingAgent(null)}
+                onStop={() => {
+                  if (inspectedAgentTarget.kind === "child" && inspectedAgentTarget.sessionId) {
+                    const workspaceId = inspectedAgentTarget.workspaceId ?? selectedWorkspace?.id;
+                    if (workspaceId) {
+                      handleSelectSession({
+                        workspaceId,
+                        sessionId: inspectedAgentTarget.sessionId,
+                      });
+                    }
+                  }
+                  handleStopRun();
+                }}
+                onSendFollowUp={async (text) => {
+                  if (!api) {
+                    return;
+                  }
+                  if (inspectedAgentTarget.kind === "child" && inspectedAgentTarget.childThreadId) {
+                    await updateSnapshot(api, setSnapshot, () =>
+                      api.sendChildThreadFollowUp({
+                        childThreadId: inspectedAgentTarget.childThreadId!,
+                        text,
+                      }),
+                    );
+                    return;
+                  }
+                  if (inspectedAgentTarget.kind === "session") {
+                    await updateSnapshot(api, setSnapshot, () =>
+                      api.submitComposer(text, {
+                        deliverAs: selectedSession.status === "running" ? "followUp" : undefined,
+                      }),
+                    );
+                  }
+                }}
               />
             ) : null}
           </>

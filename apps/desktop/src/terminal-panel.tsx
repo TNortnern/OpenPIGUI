@@ -6,8 +6,13 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import type { WorkspaceRecord } from "./desktop-state";
 import { CloseIcon, MaximizeIcon, MinimizeIcon, PlusIcon, RefreshIcon } from "./icons";
-import type { TerminalPanelSnapshot, TerminalSessionSnapshot, TerminalSize } from "./ipc";
+import { getDesktopShortcutLabel, type TerminalPanelSnapshot, type TerminalSessionSnapshot, type TerminalSize } from "./ipc";
 import { appendTerminalReplay } from "./terminal-model";
+
+interface TerminalSelectionAnchor {
+  readonly left: number;
+  readonly top: number;
+}
 
 interface TerminalPanelProps {
   readonly workspace: WorkspaceRecord;
@@ -15,6 +20,7 @@ interface TerminalPanelProps {
   readonly isTakeover: boolean;
   readonly onToggleTakeover: () => void;
   readonly onHide: () => void;
+  readonly onAddSelectionToChat?: (text: string) => void;
 }
 
 export function TerminalPanel({
@@ -23,6 +29,7 @@ export function TerminalPanel({
   isTakeover,
   onToggleTakeover,
   onHide,
+  onAddSelectionToChat,
 }: TerminalPanelProps) {
   const api = window.piApp;
   const panelRef = useRef<HTMLElement | null>(null);
@@ -31,8 +38,14 @@ export function TerminalPanel({
   const terminalRef = useRef<Terminal | null>(null);
   const activeTerminalIdRef = useRef("");
   const lastSizeRef = useRef<TerminalSize>({ cols: 80, rows: 24 });
+  const onAddSelectionToChatRef = useRef(onAddSelectionToChat);
   const [panel, setPanel] = useState<TerminalPanelSnapshot | null>(null);
   const [error, setError] = useState<string>("");
+  const [selectionText, setSelectionText] = useState("");
+  const [selectionAnchor, setSelectionAnchor] = useState<TerminalSelectionAnchor | null>(null);
+
+  onAddSelectionToChatRef.current = onAddSelectionToChat;
+  const addToChatShortcut = getDesktopShortcutLabel(api?.platform ?? "darwin", "L");
 
   const activeSession = useMemo(
     () => panel?.sessions.find((session) => session.id === panel.activeSessionId),
@@ -97,6 +110,22 @@ export function TerminalPanel({
     terminalRef.current?.reset();
     setPanel(nextPanel);
   }, [activeSession, api]);
+
+  const clearSelectionUi = useCallback(() => {
+    setSelectionText("");
+    setSelectionAnchor(null);
+  }, []);
+
+  const addSelectionToChat = useCallback(() => {
+    const terminal = terminalRef.current;
+    const text = (terminal?.getSelection() || selectionText).trimEnd();
+    if (!text.trim() || !onAddSelectionToChatRef.current) {
+      return;
+    }
+    onAddSelectionToChatRef.current(text);
+    terminal?.clearSelection();
+    clearSelectionUi();
+  }, [clearSelectionUi, selectionText]);
 
   const fitAndResize = useCallback(() => {
     const terminal = terminalRef.current;
@@ -217,6 +246,16 @@ export function TerminalPanel({
       }
       const commandModifier = api.platform === "darwin" ? event.metaKey : event.ctrlKey;
       const key = event.key.toLowerCase();
+      if (commandModifier && !event.shiftKey && !event.altKey && key === "l") {
+        const selected = terminal.getSelection().trimEnd();
+        if (selected.trim() && onAddSelectionToChatRef.current) {
+          onAddSelectionToChatRef.current(selected);
+          terminal.clearSelection();
+          setSelectionText("");
+          setSelectionAnchor(null);
+          return false;
+        }
+      }
       if (commandModifier && !event.shiftKey && key === "t") {
         void createTerminal();
         return false;
@@ -240,6 +279,29 @@ export function TerminalPanel({
         title: title.trim() || session.title,
       })));
     });
+    const selectionDisposable = terminal.onSelectionChange(() => {
+      const next = terminal.getSelection().trimEnd();
+      if (!next.trim()) {
+        setSelectionText("");
+        setSelectionAnchor(null);
+        return;
+      }
+      setSelectionText(next);
+    });
+    const handleMouseUp = (event: MouseEvent) => {
+      const next = terminal.getSelection().trimEnd();
+      if (!next.trim()) {
+        setSelectionText("");
+        setSelectionAnchor(null);
+        return;
+      }
+      const rect = container.getBoundingClientRect();
+      const left = Math.min(Math.max(8, event.clientX - rect.left), Math.max(8, rect.width - 160));
+      const top = Math.min(Math.max(8, event.clientY - rect.top - 40), Math.max(8, rect.height - 40));
+      setSelectionText(next);
+      setSelectionAnchor({ left, top });
+    };
+    container.addEventListener("mouseup", handleMouseUp);
     terminal.open(container);
     if (activeSession.replay) {
       terminal.write(activeSession.replay);
@@ -284,12 +346,18 @@ export function TerminalPanel({
         window.clearTimeout(timer);
       }
       resizeObserver.disconnect();
+      container.removeEventListener("mouseup", handleMouseUp);
+      selectionDisposable.dispose();
       fitAddonRef.current = null;
       terminalRef.current = null;
       activeTerminalIdRef.current = "";
+      setSelectionText("");
+      setSelectionAnchor(null);
       terminal.dispose();
     };
   }, [activeSession?.id, api, createTerminal, fitAndResize, sessionId, workspace.id]);
+
+  const showAddToChat = Boolean(selectionText.trim() && selectionAnchor && onAddSelectionToChat);
 
   return (
     <section
@@ -354,7 +422,30 @@ export function TerminalPanel({
       {error ? (
         <div className="terminal-panel__error">{error}</div>
       ) : (
-        <div className="terminal-panel__viewport" ref={containerRef} />
+        <div className="terminal-panel__body">
+          <div className="terminal-panel__viewport" ref={containerRef} />
+          {showAddToChat && selectionAnchor ? (
+            <button
+              type="button"
+              className="terminal-panel__add-to-chat"
+              data-testid="terminal-add-to-chat"
+              style={{ left: selectionAnchor.left, top: selectionAnchor.top }}
+              onMouseDown={(event) => {
+                // Keep the xterm selection until the click handler runs.
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                addSelectionToChat();
+              }}
+            >
+              <span>Add to Chat</span>
+              <kbd>{addToChatShortcut}</kbd>
+            </button>
+          ) : null}
+        </div>
       )}
     </section>
   );

@@ -38,6 +38,26 @@ export type DesktopNotificationPermissionStatus =
   | "unsupported"
   | "unknown";
 
+export type UpdatePhase =
+  | "disabled"
+  | "idle"
+  | "checking"
+  | "available"
+  | "downloading"
+  | "downloaded"
+  | "up-to-date"
+  | "error";
+
+export interface UpdateState {
+  readonly phase: UpdatePhase;
+  readonly currentVersion: string;
+  readonly availableVersion?: string;
+  readonly percent?: number;
+  readonly message?: string;
+  readonly canRetry: boolean;
+  readonly canRestart: boolean;
+}
+
 
 export interface CustomProviderModelConfig {
   readonly id: string;
@@ -171,6 +191,10 @@ export const desktopIpc = {
   themeChanged: "pi-gui:theme-changed",
   ping: "app:ping",
   openExternal: "app:open-external",
+  getUpdateState: "pi-gui:get-update-state",
+  checkForUpdates: "pi-gui:check-for-updates",
+  restartToUpdate: "pi-gui:restart-to-update",
+  updateStateChanged: "pi-gui:update-state-changed",
 } as const;
 
 export const desktopCommands = {
@@ -217,6 +241,7 @@ export interface TerminalSessionSnapshot {
   readonly shell: string;
   readonly title: string;
   readonly status: TerminalSessionStatus;
+  readonly startedAt: string;
   readonly replay: string;
   readonly truncated: boolean;
   readonly exitCode?: number;
@@ -420,7 +445,10 @@ export interface PiDesktopApi {
   removeQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   steerQueuedComposerMessage(messageId: string): Promise<DesktopAppState>;
   updateComposerDraft(composerDraft: string): Promise<DesktopAppState>;
-  submitComposer(text: string, options?: { readonly deliverAs?: "steer" | "followUp" }): Promise<DesktopAppState>;
+  submitComposer(text: string, options?: {
+    readonly deliverAs?: "steer" | "followUp";
+    readonly clientMessageId?: string;
+  }): Promise<DesktopAppState>;
   getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot>;
   navigateSessionTree(
     target: WorkspaceSessionTarget,
@@ -438,4 +466,8 @@ export interface PiDesktopApi {
   getResolvedTheme(): Promise<"light" | "dark">;
   setThemeMode(mode: "system" | "light" | "dark"): Promise<DesktopAppState>;
   onThemeChanged(callback: (theme: "light" | "dark") => void): () => void;
+  getUpdateState(): Promise<UpdateState>;
+  checkForUpdates(): Promise<UpdateState>;
+  restartToUpdate(): Promise<{ readonly accepted: boolean }>;
+  onUpdateState(listener: (state: UpdateState) => void): () => void;
 }

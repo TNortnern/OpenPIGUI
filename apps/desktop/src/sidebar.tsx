@@ -1,4 +1,4 @@
-import { forwardRef, useState, type CSSProperties } from "react";
+import { forwardRef, useRef, useState, type CSSProperties } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -15,12 +15,18 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, SessionRecord, ThemeMode, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import { ArchiveIcon, ChevronDownIcon, ExtensionIcon, FolderIcon, MoonIcon, PinIcon, PlusIcon, RestoreIcon, SettingsIcon, SkillIcon, SunIcon, SystemThemeIcon, WorktreeIcon } from "./icons";
-import type { PiDesktopApi } from "./ipc";
+import type { PiDesktopApi, UpdateState } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { comparePinnedThreads, sessionThreadKey, type ThreadGroup, type ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
+import { UpdateControl } from "./update-control";
+import {
+  COMPOSER_THREAD_MIME,
+  serializeThreadDropPayload,
+} from "./composer-context-blocks";
+import { isSessionRowClick } from "./session-row-pointer";
 
 interface SidebarProps {
   readonly activeView: AppView;
@@ -41,7 +47,11 @@ interface SidebarProps {
   readonly themeMode: ThemeMode;
   readonly resolvedTheme: "light" | "dark";
   readonly onCycleThemeMode: () => void;
-  readonly onNewThread: () => void;
+  readonly onNewThread: (workspaceId?: string) => void;
+  readonly updateState: UpdateState;
+  readonly onRetryUpdate: () => void;
+  readonly onRestartUpdate: () => void;
+  readonly restartUpdateDisabled?: boolean;
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
@@ -69,6 +79,10 @@ export function Sidebar(props: SidebarProps) {
     resolvedTheme,
     onCycleThemeMode,
     onNewThread,
+    updateState,
+    onRetryUpdate,
+    onRestartUpdate,
+    restartUpdateDisabled = false,
     onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
@@ -196,7 +210,7 @@ export function Sidebar(props: SidebarProps) {
           className="sidebar__new"
           type="button"
           disabled={!selectedWorkspace}
-          onClick={onNewThread}
+          onClick={() => onNewThread()}
         >
           <PlusIcon />
           <span>New thread</span>
@@ -299,6 +313,7 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onSetSessionPinned={onSetSessionPinned}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThread={onNewThread}
                   />
                 ))}
               </SortableContext>
@@ -316,6 +331,7 @@ export function Sidebar(props: SidebarProps) {
                   onSelectSession={onSelectSession}
                   onSetSessionPinned={onSetSessionPinned}
                   onUnarchiveSession={onUnarchiveSession}
+                  onNewThread={onNewThread}
                 />
               ))}
             </div>
@@ -344,6 +360,7 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onSetSessionPinned={onSetSessionPinned}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThread={onNewThread}
                   />
                 </div>
               ) : null}
@@ -353,6 +370,12 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="sidebar__footer">
+        <UpdateControl
+          restartDisabled={restartUpdateDisabled}
+          state={updateState}
+          onRestart={onRestartUpdate}
+          onRetry={onRetryUpdate}
+        />
         <ThemeModeControl themeMode={themeMode} resolvedTheme={resolvedTheme} onCycle={onCycleThemeMode} />
       </div>
     </aside>
@@ -410,6 +433,7 @@ interface WorkspaceGroupProps {
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSetSessionPinned: (target: { workspaceId: string; sessionId: string }, pinned: boolean) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onNewThread: (workspaceId?: string) => void;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -461,6 +485,7 @@ function WorkspaceGroupContent(
     onSelectSession,
     onSetSessionPinned,
     onUnarchiveSession,
+    onNewThread,
     dragHandleProps,
   } = props;
 
@@ -488,6 +513,19 @@ function WorkspaceGroupContent(
             <span className="workspace-row__icon-chevron"><ChevronDownIcon /></span>
           </span>
           <span className="workspace-row__name">{rootWorkspace.name}</span>
+        </button>
+        <button
+          aria-label={`New thread in ${rootWorkspace.name}`}
+          className="icon-button workspace-row__new-thread"
+          data-testid={`new-thread-in-${rootWorkspace.id}`}
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onNewThread(rootWorkspace.id);
+          }}
+        >
+          <PlusIcon />
         </button>
         <span
           className="workspace-row__menu-wrap"
@@ -822,6 +860,14 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(funct
     dragging ? "session-row--dragging" : "",
     overlay ? "session-row--overlay" : "",
   ].filter(Boolean).join(" ");
+  // dnd-kit owns pointer gestures on pinned sortable rows; HTML5 drag is for
+  // composer context drops from ordinary thread rows.
+  const canDragToComposer = !dragListeners && !overlay;
+  // Native `draggable` on a parent of <button> swallows click; arm select on
+  // pointerup when movement stayed under the click threshold, and only treat
+  // the gesture as a composer drag once HTML5 dragstart actually fires.
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const didComposerDragRef = useRef(false);
   return (
     <div
       ref={ref}
@@ -830,11 +876,77 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(funct
       data-sidebar-indicator={indicatorVariant}
       data-session-pinned={pinned ? "true" : "false"}
       data-session-id={thread.session.id}
+      data-composer-draggable={canDragToComposer ? "true" : "false"}
     >
       <button
-        className="session-row__select"
-        onClick={onSelect}
+        className={`session-row__select${canDragToComposer ? " session-row__select--composer-draggable" : ""}`}
         type="button"
+        draggable={canDragToComposer}
+        onPointerDown={
+          canDragToComposer
+            ? (event) => {
+                if (event.button !== 0) {
+                  return;
+                }
+                pointerStartRef.current = { x: event.clientX, y: event.clientY };
+                didComposerDragRef.current = false;
+              }
+            : undefined
+        }
+        onPointerUp={
+          canDragToComposer
+            ? (event) => {
+                if (event.button !== 0 || didComposerDragRef.current) {
+                  pointerStartRef.current = null;
+                  return;
+                }
+                const start = pointerStartRef.current;
+                pointerStartRef.current = null;
+                if (isSessionRowClick(start, { x: event.clientX, y: event.clientY })) {
+                  onSelect();
+                }
+              }
+            : undefined
+        }
+        onDragStart={
+          canDragToComposer
+            ? (event) => {
+                didComposerDragRef.current = true;
+                const payload = serializeThreadDropPayload({
+                  workspaceId: thread.workspaceId,
+                  sessionId: thread.session.id,
+                  title: thread.session.title,
+                  ...(thread.session.preview ? { preview: thread.session.preview } : {}),
+                });
+                event.dataTransfer.setData(COMPOSER_THREAD_MIME, payload);
+                event.dataTransfer.setData("text/plain", thread.session.title);
+                event.dataTransfer.effectAllowed = "copy";
+              }
+            : undefined
+        }
+        onDragEnd={
+          canDragToComposer
+            ? () => {
+                pointerStartRef.current = null;
+              }
+            : undefined
+        }
+        onClick={
+          canDragToComposer
+            ? (event) => {
+                // Mouse selection is handled on pointerup. Keyboard activation
+                // (detail === 0) still selects here. Ignore post-drag clicks.
+                if (didComposerDragRef.current) {
+                  didComposerDragRef.current = false;
+                  return;
+                }
+                if (event.detail !== 0) {
+                  return;
+                }
+                onSelect();
+              }
+            : onSelect
+        }
         {...dragAttributes}
         {...dragListeners}
       >

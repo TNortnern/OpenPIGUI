@@ -42,6 +42,7 @@ interface TerminalSession {
   shell: string;
   title: string;
   status: TerminalSessionStatus;
+  startedAt: string;
   replay: string;
   truncated: boolean;
   exitCode: number | undefined;
@@ -152,6 +153,7 @@ export class TerminalService {
     session.shell = this.resolveShell();
     session.title = this.defaultTitle(session);
     session.status = "running";
+    session.startedAt = new Date().toISOString();
     session.replay = "";
     session.truncated = false;
     session.exitCode = undefined;
@@ -273,6 +275,7 @@ export class TerminalService {
       shell: this.resolveShell(),
       title: "",
       status: "running",
+      startedAt: new Date().toISOString(),
       replay: "",
       truncated: false,
       exitCode: undefined,
@@ -382,6 +385,7 @@ export class TerminalService {
       shell: session.shell,
       title: session.title,
       status: session.status,
+      startedAt: session.startedAt,
       replay: session.replay,
       truncated: session.truncated,
       exitCode: session.exitCode,

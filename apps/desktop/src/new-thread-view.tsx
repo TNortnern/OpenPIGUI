@@ -2,7 +2,8 @@ import { useEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEv
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import type { ComposerAttachment, NewThreadEnvironment, WorkspaceRecord } from "./desktop-state";
 import type { MentionOption } from "./hooks/use-mention-menu";
-import { ArrowUpIcon, PiLogoMark, PlusIcon } from "./icons";
+import type { SkillMenuOption } from "./hooks/use-skill-menu";
+import { ArrowUpIcon, MicrophoneIcon, PiLogoMark, PlusIcon } from "./icons";
 import {
   MODEL_OPTIONS_EMPTY_TITLE,
   type ComposerSlashCommand,
@@ -40,11 +41,19 @@ interface NewThreadViewProps {
   readonly showMentionMenu: boolean;
   readonly mentionOptions: readonly MentionOption[];
   readonly selectedMentionIndex: number;
+  readonly showSkillMenu?: boolean;
+  readonly skillOptions?: readonly SkillMenuOption[];
+  readonly selectedSkillIndex?: number;
+  readonly onSelectSkill?: (option: SkillMenuOption) => void;
+  readonly dictating?: boolean;
+  readonly dictationError?: string;
+  readonly onToggleDictation?: () => void;
   readonly onChangePrompt: (prompt: string) => void;
   readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
   readonly onSelectWorkspace: (workspaceId: string) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
+  readonly onSetScopedModelPatterns?: (patterns: readonly string[]) => void;
   readonly onOpenModelSettings: (section: ModelOnboardingSettingsSection) => void;
   readonly onComposerKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   readonly onComposerPaste: (event: ClipboardEvent<HTMLDivElement>) => void;
@@ -84,11 +93,19 @@ export function NewThreadView({
   showMentionMenu,
   mentionOptions,
   selectedMentionIndex,
+  showSkillMenu = false,
+  skillOptions = [],
+  selectedSkillIndex = 0,
+  onSelectSkill,
+  dictating = false,
+  dictationError,
+  onToggleDictation,
   onChangePrompt,
   onSelectEnvironment,
   onSelectWorkspace,
   onSetModel,
   onSetThinking,
+  onSetScopedModelPatterns,
   onOpenModelSettings,
   onComposerKeyDown,
   onComposerPaste,
@@ -104,6 +121,9 @@ export function NewThreadView({
 }: NewThreadViewProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const workspace = workspaces.find((entry) => entry.id === selectedWorkspaceId);
+  const skillChipSkills = (runtime?.skills ?? [])
+    .filter((skill) => skill.enabled)
+    .map((skill) => ({ name: skill.name, slashCommand: skill.slashCommand }));
 
   useEffect(() => {
     composerRef.current?.focus();
@@ -193,10 +213,15 @@ export function NewThreadView({
               selectedMentionIndex={selectedMentionIndex}
               onSelectMention={onSelectMention}
               onEnableMentionExtension={onEnableMentionExtension}
+              showSkillMenu={showSkillMenu}
+              skillOptions={skillOptions}
+              selectedSkillIndex={selectedSkillIndex}
+              onSelectSkill={onSelectSkill}
+              skillChipSkills={skillChipSkills}
               textareaLabel="New thread prompt"
               textareaTestId="new-thread-composer"
               textareaClassName="new-thread__textarea"
-              textareaPlaceholder="Ask pi anything, use / for commands and skills"
+              textareaPlaceholder="Ask pi anything — $ for skills, / for commands"
               footer={(
                 <NewThreadComposerFooter
                   runtime={runtime}
@@ -207,9 +232,14 @@ export function NewThreadView({
                   modelOnboarding={modelOnboarding}
                   hasContent={Boolean(prompt.trim() || attachments.length > 0)}
                   fileInputRef={fileInputRef}
+                  dictating={dictating}
+                  dictationError={dictationError}
+                  onToggleDictation={onToggleDictation}
                   onSelectEnvironment={onSelectEnvironment}
                   onSetModel={onSetModel}
                   onSetThinking={onSetThinking}
+                  onSetScopedModelPatterns={onSetScopedModelPatterns}
+                  onOpenModelSettings={onOpenModelSettings}
                   onAddAttachments={onAddAttachments}
                   onSubmit={onSubmit}
                 />
@@ -231,9 +261,14 @@ interface NewThreadComposerFooterProps {
   readonly modelOnboarding: ModelOnboardingState;
   readonly hasContent: boolean;
   readonly fileInputRef: RefObject<HTMLInputElement | null>;
+  readonly dictating?: boolean;
+  readonly dictationError?: string;
+  readonly onToggleDictation?: () => void;
   readonly onSelectEnvironment: (environment: NewThreadEnvironment) => void;
   readonly onSetModel: (provider: string, modelId: string) => void;
   readonly onSetThinking: (level: string) => void;
+  readonly onSetScopedModelPatterns?: (patterns: readonly string[]) => void;
+  readonly onOpenModelSettings?: (section: ModelOnboardingSettingsSection) => void;
   readonly onAddAttachments: (files: File[]) => void;
   readonly onSubmit: () => void;
 }
@@ -247,15 +282,25 @@ function NewThreadComposerFooter({
   modelOnboarding,
   hasContent,
   fileInputRef,
+  dictating = false,
+  dictationError,
+  onToggleDictation,
   onSelectEnvironment,
   onSetModel,
   onSetThinking,
+  onSetScopedModelPatterns,
+  onOpenModelSettings,
   onAddAttachments,
   onSubmit,
 }: NewThreadComposerFooterProps) {
   return (
     <>
       <div className="composer__footer">
+        {dictationError ? (
+          <div className="composer__dictation-error" role="alert">
+            {dictationError}
+          </div>
+        ) : null}
         <div className="composer__footer-row">
           <div className="composer__hint new-thread__hint">
             <div className="new-thread__environment-group">
@@ -287,6 +332,8 @@ function NewThreadComposerFooter({
               emptyModelTitle={modelOnboarding.emptyModelTitle}
               onSetModel={onSetModel}
               onSetThinking={onSetThinking}
+              onSetScopedModelPatterns={onSetScopedModelPatterns}
+              onOpenModelSettings={onOpenModelSettings}
             />
           </div>
 
@@ -312,6 +359,17 @@ function NewThreadComposerFooter({
             >
               <PlusIcon />
             </button>
+            {onToggleDictation ? (
+              <button
+                aria-label={dictating ? "Stop dictation" : "Start dictation"}
+                className={`icon-button composer__mic${dictating ? " composer__mic--active" : ""}`}
+                data-testid="new-thread-mic"
+                type="button"
+                onClick={onToggleDictation}
+              >
+                <MicrophoneIcon />
+              </button>
+            ) : null}
             <button
               aria-label="Start thread"
               className="button button--primary button--cta-icon"
