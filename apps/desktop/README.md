@@ -71,6 +71,18 @@ Pure update tests:
 ```bash
 pnpm --filter @pi-gui/desktop run test:pure:update-service
 pnpm --filter @pi-gui/desktop run test:pure:update-ipc
+pnpm --filter @pi-gui/desktop run test:pure:orchestration-model-selection
+```
+
+Opt-in proofs stay out of the default core lane:
+
+```bash
+# Live child-model routing (requires PI_APP_REAL_AUTH=1 and PI_APP_REAL_AUTH_SOURCE_DIR)
+pnpm --filter @pi-gui/desktop run test:live:orchestration-model-routing
+
+# Packaged two-version updater proof (requires signed N/N+1 artifacts)
+PI_APP_PACKAGED_UPDATE_BASE=/path/to/N PI_APP_PACKAGED_UPDATE_NEXT=/path/to/N+1 \
+  pnpm --filter @pi-gui/desktop run test:prod:packaged-update
 ```
 
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
