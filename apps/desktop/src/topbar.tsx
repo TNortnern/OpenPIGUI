@@ -196,6 +196,7 @@ function TopbarActionButton({
     <div className="shortcut-tooltip-wrap topbar__tooltip-wrap">
       <button
         aria-label={label}
+        aria-pressed={active}
         className={`icon-button topbar__icon ${active ? "icon-button--active" : ""}`}
         type="button"
         disabled={disabled}

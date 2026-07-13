@@ -26,12 +26,14 @@ export function TerminalIcon() {
 }
 
 export function BrowserPreviewIcon() {
+  return <GlobeIcon />;
+}
+
+export function GlobeIcon() {
   return (
     <Icon>
-      <rect x="2.8" y="3.5" width="14.4" height="12.8" rx="2.4" stroke="currentColor" strokeWidth="1.35" />
-      <path d="M3.1 7h13.8M5.4 5.25h.02M7.55 5.25h.02" stroke="currentColor" strokeLinecap="round" strokeWidth="1.55" />
-      <path d="m7.1 9 5.9 4.6-2.7.35-1.2 2.2L7.1 9Z" fill="none" stroke="currentColor" strokeLinejoin="round" strokeWidth="1.25" />
-      <path d="m13.8 8 .35-.9.35.9.9.35-.9.35-.35.9-.35-.9-.9-.35.9-.35Z" fill="currentColor" />
+      <circle cx="10" cy="10" r="6.4" stroke="currentColor" strokeWidth="1.35" />
+      <path d="M3.6 10h12.8M10 3.6c2 2.1 2 10.3 0 12.8M10 3.6c-2 2.1-2 10.3 0 12.8" stroke="currentColor" strokeLinecap="round" strokeWidth="1.2" />
     </Icon>
   );
 }

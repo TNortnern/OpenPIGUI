@@ -170,6 +170,8 @@
 .topbar__icon {
   width: 28px;
   height: 28px;
+  min-width: 32px;
+  min-height: 32px;
   border-radius: 8px;
   color: var(--muted-soft);
 }
@@ -437,6 +439,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  position: relative;
   min-width: 0;
   gap: 8px;
 }
@@ -461,6 +464,17 @@
   opacity: 1;
 }
 
+.timeline-item__actions--user {
+  left: auto;
+  right: 0;
+}
+
+.timeline-item__copy-feedback {
+  color: var(--muted-soft);
+  font-size: 11px;
+  font-weight: 520;
+}
+
 .timeline-item__action {
   display: inline-flex;
   align-items: center;
@@ -483,6 +497,7 @@
 
 .timeline-item__action-label {
   font-weight: 500;
+  pointer-events: none;
 }
 
 .timeline-item__action:hover {
