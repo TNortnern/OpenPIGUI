@@ -35,8 +35,8 @@ Download the latest desktop build from the
 [Releases page](https://github.com/TNortnern/OpenPIGUI/releases)
 (beta builds are marked **Pre-release** — choose **0.1.0-beta.38**):
 
-- **macOS:** `OpenPIGUI-0.1.0-beta.38-arm64.dmg` (or the matching `.zip` for auto-update)
-- **Linux:** `OpenPIGUI-*-linux-*.AppImage` when published on the release
+- **macOS:** [OpenPIGUI-0.1.0-beta.38-arm64.dmg](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.38/OpenPIGUI-0.1.0-beta.38-arm64.dmg) (or the matching `.zip` for auto-update)
+- **Linux:** [OpenPIGUI-0.1.0-beta.38-x86_64.AppImage](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.38/OpenPIGUI-0.1.0-beta.38-x86_64.AppImage)
 - **Windows:** `.exe` installer when published on the release
 
 Direct release: [v0.1.0-beta.38](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.38).
