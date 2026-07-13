@@ -26,12 +26,20 @@ execution all run through upstream `pi`.
 
 ## Install
 
-OpenPIGUI is in public beta for **macOS (Apple Silicon)** and **Linux (AppImage)**.
+OpenPIGUI is in public beta (**0.1.0-beta.34**) for **macOS (Apple Silicon)** and **Linux (AppImage)**.
+Windows installers are also published when the release workflow succeeds.
 
 ### Download (recommended)
 
-Download the latest `.dmg` (macOS) or `.AppImage` (Linux) from the
-[Releases page](https://github.com/TNortnern/OpenPIGUI/releases).
+Download the latest desktop build from the
+[Releases page](https://github.com/TNortnern/OpenPIGUI/releases)
+(beta builds are marked **Pre-release** — choose **0.1.0-beta.34**):
+
+- **macOS:** `OpenPIGUI-0.1.0-beta.34-arm64.dmg` (or the matching `.zip` for auto-update)
+- **Linux:** `OpenPIGUI-*-linux-*.AppImage` when published on the release
+- **Windows:** `.exe` installer when published on the release
+
+Direct release: [v0.1.0-beta.34](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.34).
 
 **macOS**
 
@@ -83,8 +91,14 @@ carries over.
 - **Integrated terminal** — a real PTY terminal (via `node-pty`) docked in the app.
 - **Inline diff viewer** — review changed files in a side panel (toggle with
   <kbd>⌘/Ctrl</kbd>+<kbd>D</kbd>).
-- **Composer niceties** — `@`-mention files, and paste or drag-and-drop image
-  attachments straight into the prompt.
+- **Composer niceties** — `@`-mention files/skills, paste or drag-and-drop images,
+  drop threads into the prompt as context, and add terminal selection to chat.
+- **Model picker** — searchable model list with visibility controls (including Cursor
+  and other configured providers) plus thinking-level options.
+- **Multitask & child routing** — run parallel work and route child threads to a
+  chosen provider/model when spawning workers.
+- **In-app updates** — check, download, and restart from the sidebar footer (macOS
+  zip feed) when a newer GitHub Release is available.
 - **Skills & extensions** — manage `pi` skills and extensions from a dedicated view.
 - **Appearance themes** — light and dark, with selectable theme presets.
 - **Native notifications** — get an OS notification when an agent run finishes.

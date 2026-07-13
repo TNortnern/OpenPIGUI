@@ -87,12 +87,16 @@ PI_APP_PACKAGED_UPDATE_BASE=/path/to/N PI_APP_PACKAGED_UPDATE_NEXT=/path/to/N+1 
 
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
 
-## Release notes (desktop update & routing rollout)
+## Release notes (0.1.0-beta.34)
 
+- **Downloads:** Install from [GitHub Releases `v0.1.0-beta.34`](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.34) (macOS DMG/zip; Linux/Windows when the release workflow publishes them).
 - **In-app updates:** Sidebar footer shows check/download/restart status; macOS menu Check for Updates focuses the same control. Restart is user-initiated and waits for persistence flush.
-- **Desktop affordances:** Globe browser icon, `aria-pressed` quick actions, per-project “New thread” plus buttons, and Copy on user/assistant messages with accessible feedback.
+- **Composer / multitask:** Skill tokens, context blocks (including thread drops), terminal add-to-chat, optimistic composer status, and multitask chrome.
+- **Model UX:** Searchable model picker, visibility menu (Cursor and other providers), thinking-level options, agent inspector polish.
+- **Sidebar:** Thread rows stay click-to-select while remaining drag-to-composer when movement exceeds the click threshold.
 - **Child model routing:** `create_child_thread` accepts optional `provider`/`model`, resolves against the live registry before session creation, persists provenance, and rejects ambiguous/unavailable requests without orphan sessions.
-- **Verification:** Pure update/orchestration tests plus core Playwright specs cover the above; live routing and packaged N→N+1 updater proofs remain opt-in (`PI_APP_REAL_AUTH`, signed artifacts).
+- **Desktop affordances:** Globe browser icon, `aria-pressed` quick actions, per-project “New thread” plus buttons, and Copy on user/assistant messages with accessible feedback.
+- **Verification:** Pure update/orchestration/pointer tests plus core Playwright specs; live routing and packaged N→N+1 updater proofs remain opt-in (`PI_APP_REAL_AUTH`, signed artifacts).
 
 ## Test Lanes
 
