@@ -15,12 +15,13 @@ import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } 
 import { CSS } from "@dnd-kit/utilities";
 import type { AppView, SessionRecord, ThemeMode, WorkspaceRecord, WorktreeRecord } from "./desktop-state";
 import { ArchiveIcon, ChevronDownIcon, ExtensionIcon, FolderIcon, MoonIcon, PinIcon, PlusIcon, RestoreIcon, SettingsIcon, SkillIcon, SunIcon, SystemThemeIcon, WorktreeIcon } from "./icons";
-import type { PiDesktopApi } from "./ipc";
+import type { PiDesktopApi, UpdateState } from "./ipc";
 import { formatRelativeTime } from "./string-utils";
 import type { WorkspaceMenuState } from "./hooks/use-workspace-menu";
 import { comparePinnedThreads, sessionThreadKey, type ThreadGroup, type ThreadListEntry } from "./thread-groups";
 import type { Dispatch, SetStateAction } from "react";
 import type { DesktopAppState } from "./desktop-state";
+import { UpdateControl } from "./update-control";
 
 interface SidebarProps {
   readonly activeView: AppView;
@@ -41,7 +42,11 @@ interface SidebarProps {
   readonly themeMode: ThemeMode;
   readonly resolvedTheme: "light" | "dark";
   readonly onCycleThemeMode: () => void;
-  readonly onNewThread: () => void;
+  readonly onNewThread: (workspaceId?: string) => void;
+  readonly updateState: UpdateState;
+  readonly onRetryUpdate: () => void;
+  readonly onRestartUpdate: () => void;
+  readonly restartUpdateDisabled?: boolean;
   readonly onSetActiveView: (view: AppView) => void;
   readonly onOpenSkills: (workspaceId?: string) => void;
   readonly onOpenExtensions: (workspaceId?: string) => void;
@@ -69,6 +74,10 @@ export function Sidebar(props: SidebarProps) {
     resolvedTheme,
     onCycleThemeMode,
     onNewThread,
+    updateState,
+    onRetryUpdate,
+    onRestartUpdate,
+    restartUpdateDisabled = false,
     onSetActiveView,
     onOpenSkills,
     onOpenExtensions,
@@ -196,7 +205,7 @@ export function Sidebar(props: SidebarProps) {
           className="sidebar__new"
           type="button"
           disabled={!selectedWorkspace}
-          onClick={onNewThread}
+          onClick={() => onNewThread()}
         >
           <PlusIcon />
           <span>New thread</span>
@@ -299,6 +308,7 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onSetSessionPinned={onSetSessionPinned}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThread={onNewThread}
                   />
                 ))}
               </SortableContext>
@@ -316,6 +326,7 @@ export function Sidebar(props: SidebarProps) {
                   onSelectSession={onSelectSession}
                   onSetSessionPinned={onSetSessionPinned}
                   onUnarchiveSession={onUnarchiveSession}
+                  onNewThread={onNewThread}
                 />
               ))}
             </div>
@@ -344,6 +355,7 @@ export function Sidebar(props: SidebarProps) {
                     onSelectSession={onSelectSession}
                     onSetSessionPinned={onSetSessionPinned}
                     onUnarchiveSession={onUnarchiveSession}
+                    onNewThread={onNewThread}
                   />
                 </div>
               ) : null}
@@ -353,6 +365,12 @@ export function Sidebar(props: SidebarProps) {
       </div>
 
       <div className="sidebar__footer">
+        <UpdateControl
+          restartDisabled={restartUpdateDisabled}
+          state={updateState}
+          onRestart={onRestartUpdate}
+          onRetry={onRetryUpdate}
+        />
         <ThemeModeControl themeMode={themeMode} resolvedTheme={resolvedTheme} onCycle={onCycleThemeMode} />
       </div>
     </aside>
@@ -410,6 +428,7 @@ interface WorkspaceGroupProps {
   readonly onSelectSession: (target: { workspaceId: string; sessionId: string }) => void;
   readonly onSetSessionPinned: (target: { workspaceId: string; sessionId: string }, pinned: boolean) => void;
   readonly onUnarchiveSession: (target: { workspaceId: string; sessionId: string }) => void;
+  readonly onNewThread: (workspaceId?: string) => void;
 }
 
 function SortableWorkspaceGroup(props: WorkspaceGroupProps) {
@@ -461,6 +480,7 @@ function WorkspaceGroupContent(
     onSelectSession,
     onSetSessionPinned,
     onUnarchiveSession,
+    onNewThread,
     dragHandleProps,
   } = props;
 
@@ -488,6 +508,19 @@ function WorkspaceGroupContent(
             <span className="workspace-row__icon-chevron"><ChevronDownIcon /></span>
           </span>
           <span className="workspace-row__name">{rootWorkspace.name}</span>
+        </button>
+        <button
+          aria-label={`New thread in ${rootWorkspace.name}`}
+          className="icon-button workspace-row__new-thread"
+          data-testid={`new-thread-in-${rootWorkspace.id}`}
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onNewThread(rootWorkspace.id);
+          }}
+        >
+          <PlusIcon />
         </button>
         <span
           className="workspace-row__menu-wrap"

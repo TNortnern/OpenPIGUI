@@ -328,6 +328,11 @@ export class UpdateService {
     this.options.adapter.quitAndInstall();
   }
 
+  /** ponytail: test-only direct reducer hook for Playwright update-control proofs */
+  simulateEventForTest(event: UpdaterEvent): void {
+    this.publish(reduceUpdateState(this.state, event));
+  }
+
   private configureAdapter(): void {
     const policy = resolveUpdateChannelPolicy(this.options.currentVersion);
     this.options.adapter.autoDownload = true;

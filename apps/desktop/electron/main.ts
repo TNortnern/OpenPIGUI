@@ -35,6 +35,7 @@ import {
 } from "./notification-permission";
 import { createUpdateServiceEnablement, createInitialUpdateState } from "./update-service";
 import { createElectronUpdaterAdapter } from "./update-adapter";
+import { createUpdateTestAdapter, getUpdateTestAdapter, isUpdateFakeAdapterEnabled } from "./update-test-adapter";
 import { UpdateIpcBridge } from "./update-ipc-bridge";
 import { ThemeManager } from "./theme-manager";
 import { TerminalService } from "./terminal-service";
@@ -898,9 +899,10 @@ async function pickWorkspaceViaDialog(parentWindow?: BrowserWindow | null): Prom
 }
 
 function initUpdateBridge(): () => void {
-  const enabled = createUpdateServiceEnablement(process.env, app.isPackaged);
+  const fakeAdapterEnabled = isUpdateFakeAdapterEnabled();
+  const enabled = fakeAdapterEnabled || createUpdateServiceEnablement(process.env, app.isPackaged);
   const bridge = UpdateIpcBridge.create({
-    adapter: createElectronUpdaterAdapter(),
+    adapter: fakeAdapterEnabled ? createUpdateTestAdapter() : createElectronUpdaterAdapter(),
     currentVersion: app.getVersion(),
     enabled,
     getWindows: () =>
@@ -1165,6 +1167,24 @@ app.whenReady().then(async () => {
   );
   stopNotifications = notificationManager.start();
   stopUpdateBridge = initUpdateBridge();
+  if (process.env.PI_APP_TEST_MODE) {
+    const hooks = (globalThis as { __PI_APP_TEST_HOOKS?: Record<string, unknown> }).__PI_APP_TEST_HOOKS ?? {};
+    Object.assign(hooks, {
+      emitUpdateAdapterEvent: (event: string, payload?: unknown) => {
+        getUpdateTestAdapter().emit(event, payload);
+      },
+      simulateUpdateEventForTest: (event: import("./update-service").UpdaterEvent) => {
+        if (!updateBridge) {
+          throw new Error("Update bridge is unavailable for tests");
+        }
+        updateBridge.service.simulateEventForTest(event);
+        updateBridge.broadcast(updateBridge.getUpdateState());
+      },
+      getUpdateStateForTest: () => updateBridge?.getUpdateState(),
+      getUpdateRestartCalls: () => getUpdateTestAdapter().quitCalls,
+    });
+    (globalThis as { __PI_APP_TEST_HOOKS?: Record<string, unknown> }).__PI_APP_TEST_HOOKS = hooks;
+  }
 
   ipcMain.handle(desktopIpc.ping, () =>
     devReloadMarkersEnabled ? `pi desktop ready:${MAIN_DEV_RELOAD_MARKER}` : "pi desktop ready",

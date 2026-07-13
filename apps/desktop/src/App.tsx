@@ -27,6 +27,7 @@ import {
   type CustomProviderConfig,
   type DesktopNotificationPermissionStatus,
   type PiDesktopCommand,
+  type UpdateState,
 } from "./ipc";
 import { deriveModelOnboardingState } from "./model-onboarding";
 import { ModelSelector } from "./model-selector";
@@ -224,6 +225,12 @@ export default function App() {
   const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
   const [newThreadComposerError, setNewThreadComposerError] = useState<string | undefined>();
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
+  const [updateState, setUpdateState] = useState<UpdateState>(() => ({
+    phase: "disabled",
+    currentVersion: "0.0.0",
+    canRetry: false,
+    canRestart: false,
+  }));
   const [notificationPermissionStatus, setNotificationPermissionStatus] =
     useState<DesktopNotificationPermissionStatus>("unknown");
   const [notificationPermissionPending, setNotificationPermissionPending] = useState(false);
@@ -326,6 +333,21 @@ export default function App() {
     });
 
     return unsub;
+  }, []);
+
+  useEffect(() => {
+    const piApi = window.piApp;
+    if (!piApi) {
+      return undefined;
+    }
+
+    void piApi.getUpdateState().then((state) => {
+      setUpdateState(state);
+    });
+
+    return piApi.onUpdateState((state) => {
+      setUpdateState(state);
+    });
   }, []);
 
   useEffect(() => {
@@ -1881,7 +1903,12 @@ export default function App() {
   const openNewThreadSurface = (workspaceId?: string) => {
     setPendingNewThreadWorkspaceId("");
     resetNewThreadSurface(workspaceId);
-    setActiveView("new-thread");
+    void updateSnapshot(api, setSnapshot, async () => {
+      if (workspaceId) {
+        await api.selectWorkspace(workspaceId);
+      }
+      return api.setActiveView("new-thread");
+    });
   };
 
   const handleSelectNewThreadWorkspace = (workspaceId: string) => {
@@ -2713,7 +2740,15 @@ export default function App() {
           themeMode={snapshot.themeMode}
           resolvedTheme={resolvedTheme}
           onCycleThemeMode={handleCycleThemeMode}
-          onNewThread={() => openNewThreadSurface(selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+          onNewThread={(workspaceId) => openNewThreadSurface(workspaceId ?? selectedWorkspace?.rootWorkspaceId ?? selectedWorkspace?.id)}
+          updateState={updateState}
+          onRetryUpdate={() => {
+            void api.checkForUpdates();
+          }}
+          onRestartUpdate={() => {
+            void api.restartToUpdate();
+          }}
+          restartUpdateDisabled={Boolean(snapshot.lastError)}
           onSetActiveView={setActiveView}
           onOpenSkills={openSkills}
           onOpenExtensions={openExtensions}
