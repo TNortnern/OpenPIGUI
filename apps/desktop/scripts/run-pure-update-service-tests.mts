@@ -343,7 +343,7 @@ test("UpdateService configures adapter policy, timers, and deduped checks", asyn
   service.stop();
 });
 
-test("UpdateService quitAndInstall delegates to adapter only when downloaded", () => {
+test("UpdateService installDownloadedUpdate delegates to adapter only when downloaded", () => {
   const adapter = new FakeAdapter();
   const service = new UpdateService({
     adapter,
@@ -352,13 +352,14 @@ test("UpdateService quitAndInstall delegates to adapter only when downloaded", (
     enabled: true,
   });
   service.start();
-  service.restartToUpdate();
+  service.installDownloadedUpdate();
   assert.equal(adapter.quitCalls, 0);
 
   adapter.emit("checking-for-update");
   adapter.emit("update-available", { version: "1.0.0" });
   adapter.emit("update-downloaded", { version: "1.0.0" });
-  service.restartToUpdate();
+  assert.deepEqual(service.restartToUpdate(), { accepted: true });
+  service.installDownloadedUpdate();
   assert.equal(adapter.quitCalls, 1);
   service.stop();
 });

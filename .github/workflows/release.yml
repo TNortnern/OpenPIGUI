@@ -28,6 +28,13 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: Require mac code signing for auto-update release
+        run: |
+          if [ -z "${{ secrets.CSC_LINK }}" ]; then
+            echo "::error::CSC_LINK is required to publish signed mac auto-update artifacts."
+            exit 1
+          fi
+
       - name: Verify install copy
         run: pnpm verify:install-copy
 
@@ -66,6 +73,9 @@ jobs:
       - name: Verify packaged runtime dependencies
         run: pnpm --dir apps/desktop run verify:packaged-runtime-deps
 
+      - name: Verify release update metadata
+        run: node apps/desktop/scripts/assert-packaged-runtime-deps.mjs --verify-release-update-artifacts --platform darwin
+
       - name: Verify Homebrew tap rewrite
         run: pnpm test:homebrew-tap
 
@@ -87,6 +97,7 @@ jobs:
           files: |
             apps/desktop/release/*.dmg
             apps/desktop/release/*.zip
+            apps/desktop/release/*.zip.blockmap
             apps/desktop/release/latest-mac.yml
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
@@ -140,11 +151,15 @@ jobs:
       - name: Verify packaged runtime dependencies
         run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:linux
 
+      - name: Verify release update metadata
+        run: node apps/desktop/scripts/assert-packaged-runtime-deps.mjs --verify-release-update-artifacts --platform linux
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             apps/desktop/release/*.AppImage
+            apps/desktop/release/*.AppImage.zsync
             apps/desktop/release/latest-linux*.yml
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
@@ -180,11 +195,15 @@ jobs:
       - name: Verify packaged runtime dependencies
         run: pnpm --dir apps/desktop run verify:packaged-runtime-deps:windows
 
+      - name: Verify release update metadata
+        run: node apps/desktop/scripts/assert-packaged-runtime-deps.mjs --verify-release-update-artifacts --platform win32
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             apps/desktop/release/*.exe
+            apps/desktop/release/*.exe.blockmap
             apps/desktop/release/latest.yml
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true

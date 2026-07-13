@@ -6,6 +6,7 @@ import {
   type CustomProviderProbeInput,
   type CustomProviderProbeResult,
   type DesktopNotificationPermissionStatus,
+  type UpdateState,
   type WorkspaceFilePreview,
   type PiDesktopCommand,
   type TerminalDataEvent,
@@ -337,4 +338,9 @@ contextBridge.exposeInMainWorld("piApp", {
       ipcRenderer.removeListener(desktopIpc.themeChanged, handler);
     };
   },
+  getUpdateState: () => ipcRenderer.invoke(desktopIpc.getUpdateState) as Promise<UpdateState>,
+  checkForUpdates: () => ipcRenderer.invoke(desktopIpc.checkForUpdates) as Promise<UpdateState>,
+  restartToUpdate: () =>
+    ipcRenderer.invoke(desktopIpc.restartToUpdate) as Promise<{ readonly accepted: boolean }>,
+  onUpdateState: (listener: (state: UpdateState) => void) => subscribeIpc(desktopIpc.updateStateChanged, listener),
 });

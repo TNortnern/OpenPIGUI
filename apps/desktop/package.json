@@ -33,6 +33,8 @@
     "verify:packaged-runtime-deps": "pnpm run verify:runtime-model-registry && node scripts/assert-packaged-runtime-deps.mjs",
     "verify:packaged-runtime-deps:linux": "pnpm run verify:runtime-model-registry && cross-env PI_APP_PACKAGE_PLATFORM=linux node scripts/assert-packaged-runtime-deps.mjs",
     "verify:packaged-runtime-deps:windows": "pnpm run verify:runtime-model-registry && cross-env PI_APP_PACKAGE_PLATFORM=win32 node scripts/assert-packaged-runtime-deps.mjs",
+    "test:pure:update-service": "node --experimental-strip-types scripts/run-pure-update-service-tests.mts",
+    "test:pure:update-ipc": "node --experimental-strip-types scripts/run-update-ipc-contract-tests.mts",
     "test": "pnpm run test:e2e",
     "test:e2e": "pnpm run test:e2e:core",
     "test:e2e:all": "pnpm run test:e2e:core && pnpm run test:e2e:live && pnpm run test:e2e:native",

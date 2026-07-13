@@ -191,6 +191,10 @@ export const desktopIpc = {
   themeChanged: "pi-gui:theme-changed",
   ping: "app:ping",
   openExternal: "app:open-external",
+  getUpdateState: "pi-gui:get-update-state",
+  checkForUpdates: "pi-gui:check-for-updates",
+  restartToUpdate: "pi-gui:restart-to-update",
+  updateStateChanged: "pi-gui:update-state-changed",
 } as const;
 
 export const desktopCommands = {
@@ -458,4 +462,8 @@ export interface PiDesktopApi {
   getResolvedTheme(): Promise<"light" | "dark">;
   setThemeMode(mode: "system" | "light" | "dark"): Promise<DesktopAppState>;
   onThemeChanged(callback: (theme: "light" | "dark") => void): () => void;
+  getUpdateState(): Promise<UpdateState>;
+  checkForUpdates(): Promise<UpdateState>;
+  restartToUpdate(): Promise<{ readonly accepted: boolean }>;
+  onUpdateState(listener: (state: UpdateState) => void): () => void;
 }

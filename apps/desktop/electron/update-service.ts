@@ -318,8 +318,14 @@ export class UpdateService {
     if (this.state.phase !== "downloaded") {
       return { accepted: false };
     }
-    this.options.adapter.quitAndInstall();
     return { accepted: true };
+  }
+
+  installDownloadedUpdate(): void {
+    if (this.state.phase !== "downloaded") {
+      return;
+    }
+    this.options.adapter.quitAndInstall();
   }
 
   private configureAdapter(): void {

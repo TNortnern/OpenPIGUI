@@ -53,6 +53,26 @@ pnpm --filter @pi-gui/desktop run package:win:dir
 
 On Windows, `package:win*` routes through `scripts/package-windows.mjs`, which prefers the ASCII repo-local `tools/pnpm.cmd` shim and redirects `ELECTRON_BUILDER_CACHE` / `LOCALAPPDATA` into `.cache/` under the repo. This avoids electron-builder failures when `pnpm` lives under a non-ASCII `%USERPROFILE%` or when Developer Mode / elevation is unavailable for winCodeSign symlink extraction. Set `ELECTRON_MIRROR` if Electron downloads are flaky in your region.
 
+## Automatic Updates
+
+Packaged production builds check GitHub Releases through a narrow main-process update service and expose typed renderer IPC only (`getUpdateState`, `checkForUpdates`, `restartToUpdate`, `onUpdateState`). Dev, unpackaged, and Playwright test launches keep updates disabled unless `PI_APP_UPDATE_CONTROLLED_FEED=1` is set for opt-in packaged-update proofs.
+
+| Platform | Updater artifact | Notes |
+| --- | --- | --- |
+| macOS (Apple Silicon) | Signed ZIP + `latest-mac.yml` + `.zip.blockmap` | Primary auto-update surface. Release CI requires `CSC_LINK` and notarizes when App Store Connect API secrets are configured. |
+| Windows | NSIS installer + `latest.yml` + `.exe.blockmap` | Supported when NSIS metadata is present on the release. |
+| Linux | AppImage + `latest-linux*.yml` + `.AppImage.zsync` | Supported when AppImage metadata is present on the release. |
+| Other formats (DMG, portable EXE, unpacked builds) | Manual download fallback | These install paths are not wired to electron-updater; use the GitHub release asset directly. |
+
+macOS **Check for Updates…** in the application menu triggers the same in-app service as the renderer control: it checks for updates and focuses the running window so the in-app status surface is visible. Restart installs only after the existing persistence flush completes.
+
+Pure update tests:
+
+```bash
+pnpm --filter @pi-gui/desktop run test:pure:update-service
+pnpm --filter @pi-gui/desktop run test:pure:update-ipc
+```
+
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
 
 ## Test Lanes
