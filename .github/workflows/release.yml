@@ -60,9 +60,11 @@ jobs:
           if [ -z "${CSC_LINK:-}" ]; then
             unset CSC_LINK CSC_KEY_PASSWORD
             export CSC_IDENTITY_AUTO_DISCOVERY=false
+            echo "HAS_MAC_SIGNING=false" >> "$GITHUB_ENV"
             echo "::warning::CSC_LINK unset; packaging unsigned mac artifacts."
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=true
+            echo "HAS_MAC_SIGNING=true" >> "$GITHUB_ENV"
           fi
           # Enable notarization only when App Store Connect API secrets are present.
           if [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_KEY_ID:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ]; then
@@ -88,17 +90,6 @@ jobs:
       - name: Verify Homebrew tap rewrite
         run: pnpm test:homebrew-tap
 
-      - name: Smoke test the packaged release zip
-        run: pnpm --dir apps/desktop run test:prod:release-zip-smoke:ci
-
-      - name: Staple macOS artifacts
-        run: |
-          if xcrun stapler staple apps/desktop/release/*.dmg 2>/dev/null; then
-            xcrun stapler validate apps/desktop/release/*.dmg
-          else
-            echo "::warning::DMG stapling skipped (not notarized or stapler unavailable)."
-          fi
-
       - name: Release
         id: release
         uses: softprops/action-gh-release@v2
@@ -110,6 +101,20 @@ jobs:
             apps/desktop/release/latest-mac.yml
           prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
           generate_release_notes: true
+
+      - name: Smoke test the packaged release zip
+        # Unsigned CI builds often hang under Gatekeeper; publish assets first so
+        # downloads are not blocked. Skip smoke when packaging was unsigned.
+        if: ${{ env.HAS_MAC_SIGNING == 'true' }}
+        run: pnpm --dir apps/desktop run test:prod:release-zip-smoke:ci
+
+      - name: Staple macOS artifacts
+        run: |
+          if xcrun stapler staple apps/desktop/release/*.dmg 2>/dev/null; then
+            xcrun stapler validate apps/desktop/release/*.dmg
+          else
+            echo "::warning::DMG stapling skipped (not notarized or stapler unavailable)."
+          fi
 
       - name: Sync Homebrew tap
         if: ${{ env.HOMEBREW_TAP_TOKEN != '' && env.HOMEBREW_TAP_REPO != '' }}
