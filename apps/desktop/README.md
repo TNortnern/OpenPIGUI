@@ -87,6 +87,13 @@ PI_APP_PACKAGED_UPDATE_BASE=/path/to/N PI_APP_PACKAGED_UPDATE_NEXT=/path/to/N+1 
 
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
 
+## Release notes (desktop update & routing rollout)
+
+- **In-app updates:** Sidebar footer shows check/download/restart status; macOS menu Check for Updates focuses the same control. Restart is user-initiated and waits for persistence flush.
+- **Desktop affordances:** Globe browser icon, `aria-pressed` quick actions, per-project “New thread” plus buttons, and Copy on user/assistant messages with accessible feedback.
+- **Child model routing:** `create_child_thread` accepts optional `provider`/`model`, resolves against the live registry before session creation, persists provenance, and rejects ambiguous/unavailable requests without orphan sessions.
+- **Verification:** Pure update/orchestration tests plus core Playwright specs cover the above; live routing and packaged N→N+1 updater proofs remain opt-in (`PI_APP_REAL_AUTH`, signed artifacts).
+
 ## Test Lanes
 
 Use the smallest lane that matches the changed surface.
