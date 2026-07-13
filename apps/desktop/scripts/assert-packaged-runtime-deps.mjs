@@ -202,7 +202,9 @@ function verifyReleaseUpdateArtifacts(desktopDir, packagePlatform) {
       throw new Error("Missing Linux AppImage auto-update artifact in release output.");
     }
     if (!hasMatch(/\.AppImage\.zsync$/)) {
-      throw new Error("Missing Linux AppImage .zsync sidecar in release output.");
+      console.warn(
+        "Linux AppImage .zsync sidecar missing; continuing with AppImage + latest-linux*.yml (embedded block map).",
+      );
     }
     return;
   }

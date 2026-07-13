@@ -13,8 +13,10 @@ async function main() {
     readFile(path.join(repoRoot, "apps", "website", "app", "page.tsx"), "utf8"),
   ]);
 
-  assert.match(readme, /Download the latest `\.dmg` \(macOS\) or `\.AppImage` \(Linux\) from the\s+\[Releases page\]/);
+  assert.match(readme, /Download the latest desktop build from the\s+\[Releases page\]/);
   assert.match(readme, /https:\/\/github\.com\/TNortnern\/OpenPIGUI\/releases/);
+  assert.match(readme, /0\.1\.0-beta\.\d+/);
+  assert.match(readme, /OpenPIGUI-0\.1\.0-beta\.\d+-arm64\.dmg/);
   assert.match(readme, /OpenPIGUI\.app/);
   assert.doesNotMatch(readme, /Homebrew installation will be published/);
 
