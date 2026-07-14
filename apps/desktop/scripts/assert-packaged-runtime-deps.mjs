@@ -47,6 +47,7 @@ const requiredPackages = [
   "balanced-match",
   "bowser",
   "brace-expansion",
+  "builder-util-runtime",
   "chalk",
   "cross-spawn",
   "data-uri-to-buffer",
@@ -132,6 +133,7 @@ const packagedRuntimeImportChecks = [
   ["@earendil-works", "pi-ai", "dist", "bedrock-provider.js"],
   ["proxy-agent", "dist", "index.js"],
 ];
+const workspaceEsmPackageBoundaries = [["@pi-gui", "pi-sdk-driver", "dist", "package.json"]];
 
 if (!existsSync(asarPath)) {
   throw new Error(`Packaged app.asar not found at ${asarPath}. Run the packaging step first.`);
@@ -150,6 +152,7 @@ try {
   });
 
   verifyRequiredPackages(extractedDir);
+  verifyWorkspaceEsmPackageBoundaries(extractedDir);
   await verifyPackagedPiRuntime(extractedDir);
   await verifyPackagedRuntimeImports(extractedDir);
   await verifyNativeNodePty(asarPath);
@@ -268,6 +271,22 @@ function verifyRequiredPackages(extractedDir) {
 
   if (missingPackages.length > 0) {
     throw new Error(`Packaged app is missing runtime dependencies: ${missingPackages.join(", ")}`);
+  }
+}
+
+function verifyWorkspaceEsmPackageBoundaries(extractedDir) {
+  for (const packageBoundary of workspaceEsmPackageBoundaries) {
+    const packageJsonPath = path.join(extractedDir, "node_modules", ...packageBoundary);
+    if (!existsSync(packageJsonPath)) {
+      throw new Error(
+        `Packaged app is missing ESM package boundary: ${path.relative(extractedDir, packageJsonPath)}`,
+      );
+    }
+
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8"));
+    if (packageJson.type !== "module") {
+      throw new Error(`Packaged ESM package boundary must declare type=module: ${packageJsonPath}`);
+    }
   }
 }
 

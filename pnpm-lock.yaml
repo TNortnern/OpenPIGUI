@@ -146,6 +146,9 @@ importers:
       brace-expansion:
         specifier: ^5.0.2
         version: 5.0.4
+      builder-util-runtime:
+        specifier: 9.3.1
+        version: 9.3.1
       chalk:
         specifier: ^5.5.0
         version: 5.6.2

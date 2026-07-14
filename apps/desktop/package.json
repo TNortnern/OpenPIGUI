@@ -1,7 +1,7 @@
 {
   "name": "@pi-gui/desktop",
   "private": true,
-  "version": "0.1.0-beta.39",
+  "version": "0.1.0-beta.40",
   "author": "Trayvon Northern",
   "license": "MIT",
   "description": "OpenPIGUI — Codex-style desktop shell for pi",
@@ -135,6 +135,7 @@
     "balanced-match": "^4.0.2",
     "bowser": "^2.11.0",
     "brace-expansion": "^5.0.2",
+    "builder-util-runtime": "9.3.1",
     "chalk": "^5.5.0",
     "cross-spawn": "7.0.6",
     "data-uri-to-buffer": "^4.0.1",

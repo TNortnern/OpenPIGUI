@@ -19,9 +19,9 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/write-dist-package-json.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test \"test/**/*.test.mts\""
+    "test": "pnpm run build && node --test \"test/**/*.test.mts\""
   },
   "dependencies": {
     "@earendil-works/pi-ai": "^0.80.6",
