@@ -59,7 +59,7 @@ Packaged production builds check GitHub Releases through a narrow main-process u
 
 | Platform | Updater artifact | Notes |
 | --- | --- | --- |
-| macOS (Apple Silicon) | Signed/notarized ZIP + `latest-mac.yml` + `.zip.blockmap` | Primary auto-update surface. Release CI requires complete signing and notarization credentials, rejects missing or partial credential sets, and launches the packaged ZIP before publish. |
+| macOS (Apple Silicon) | ZIP + `latest-mac.yml` + `.zip.blockmap` | Primary auto-update surface. Complete Apple credentials enable signing, notarization, and a packaged-ZIP launch smoke. With no Apple access, CI explicitly builds unsigned artifacts, performs structural checks, and documents the manual Gatekeeper override; partial credentials are always rejected. |
 | Windows | NSIS installer + `latest.yml` + `.exe.blockmap` | Supported when NSIS metadata is present on the release. |
 | Linux | AppImage + `latest-linux*.yml` + `.AppImage.zsync` | Supported when AppImage metadata is present on the release. |
 | Other formats (DMG, portable EXE, unpacked builds) | Manual download fallback | These install paths are not wired to electron-updater; use the GitHub release asset directly. |
@@ -97,6 +97,7 @@ Live agent tests use your existing `pi` runtime and provider auth. If local `pi`
 - **Child model routing:** `create_child_thread` accepts optional `provider`/`model`, resolves against the live registry before session creation, persists provenance, and rejects ambiguous/unavailable requests without orphan sessions.
 - **Desktop affordances:** Globe browser icon, `aria-pressed` quick actions, per-project “New thread” plus buttons, and Copy on user/assistant messages with accessible feedback.
 - **Verification:** Pure update/orchestration/pointer tests plus core Playwright specs; live routing and packaged N→N+1 updater proofs remain opt-in (`PI_APP_REAL_AUTH`, signed artifacts).
+- **Unsigned macOS proof:** CI verifies artifact structure; after download, the release is approved through macOS **Open** and checked on the real Electron surface with Computer Use.
 
 ## Test Lanes
 

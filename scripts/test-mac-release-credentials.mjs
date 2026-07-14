@@ -42,10 +42,14 @@ test("rejects signing credentials without complete notarization credentials", ()
   );
 });
 
-test("rejects an unsigned release even when the former override is present", () => {
-  assert.throws(
-    () => resolveMacReleaseMode({ ALLOW_UNSIGNED_MAC_RELEASE: "true" }),
-    /require CSC_LINK/,
+test("allows an unsigned release only through the explicit override", () => {
+  assert.deepEqual(
+    resolveMacReleaseMode({ ALLOW_UNSIGNED_MAC_RELEASE: "true" }),
+    {
+      mode: "unsigned",
+      hasMacSigning: false,
+      hasMacNotarization: false,
+    },
   );
 });
 
@@ -76,6 +80,18 @@ test("release workflow validates credentials and smokes the app before publishin
     workflow.slice(smokeStep, releaseStep),
     /if:.*HAS_MAC_SIGNING/,
   );
-  assert.doesNotMatch(workflow, /ALLOW_UNSIGNED_MAC_RELEASE/);
+  assert.match(workflow, /ALLOW_UNSIGNED_MAC_RELEASE: "true"/);
   assert.doesNotMatch(workflow, /PI_APP_RELEASE_SMOKE_CLEAR_QUARANTINE/);
+  assert.match(
+    workflow.slice(smokeStep, releaseStep),
+    /if:.*MAC_RELEASE_MODE == 'signed-notarized'/,
+  );
+  assert.match(
+    workflow.slice(smokeStep, releaseStep),
+    /Verify unsigned mac artifacts\n\s+if:.*MAC_RELEASE_MODE == 'unsigned'/,
+  );
+  assert.match(
+    workflow,
+    /Document Gatekeeper override when unsigned\n\s+if:.*MAC_RELEASE_MODE == 'unsigned'/,
+  );
 });

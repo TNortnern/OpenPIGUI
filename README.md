@@ -44,8 +44,10 @@ Direct release: [v0.1.0-beta.39](https://github.com/TNortnern/OpenPIGUI/releases
 **macOS**
 
 1. Open the `.dmg` and drag `OpenPIGUI.app` into `/Applications`.
-2. Launch **OpenPIGUI** from Applications or Spotlight.
-3. If macOS says it cannot verify the current download, stop and report the release: macOS artifacts are required to be Developer ID–signed and notarized before CI publishes them.
+2. Control-click (or right-click) **OpenPIGUI.app**, choose **Open**, then confirm **Open** in the macOS dialog.
+3. Future launches of that copy can use Applications or Spotlight normally.
+
+The current beta is intentionally unsigned and not notarized because the project does not have Apple Developer access. Download it only from this official GitHub repository. macOS requires the manual **Open** approval for each newly downloaded copy.
 
 ### macOS signing secrets (maintainers)
 
@@ -59,7 +61,7 @@ Public macOS downloads pass Gatekeeper when release CI has:
 | `APPLE_API_KEY_ID` | Key ID |
 | `APPLE_API_ISSUER` | Issuer UUID |
 
-All five credentials are required. Missing or partial credentials fail the macOS job before packaging. The packaged release ZIP must then launch and start a thread before any assets are published.
+When signing is enabled, all five credentials are required; partial credential sets fail the macOS job before packaging. With no credentials, the release workflow must explicitly opt into the unsigned path. Signed/notarized ZIPs launch and start a thread before publication; unsigned artifacts receive structural checks in CI and require the documented manual Gatekeeper approval after download.
 
 **Linux**
 

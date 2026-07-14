@@ -22,6 +22,17 @@ export function resolveMacReleaseMode(environment) {
     };
   }
 
+  if (
+    presentCredentials.length === 0 &&
+    environment.ALLOW_UNSIGNED_MAC_RELEASE === "true"
+  ) {
+    return {
+      mode: "unsigned",
+      hasMacSigning: false,
+      hasMacNotarization: false,
+    };
+  }
+
   const missingCredentials = credentialNames.filter(
     (name) => !environment[name],
   );
@@ -51,7 +62,11 @@ function main() {
   try {
     const result = resolveMacReleaseMode(process.env);
     writeGithubEnvironment(result, process.env);
-
+    if (result.mode === "unsigned") {
+      console.warn(
+        "::warning::Publishing an unsigned macOS build; users must approve it through Gatekeeper manually.",
+      );
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`::error::${message}`);
