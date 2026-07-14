@@ -26,40 +26,30 @@ execution all run through upstream `pi`.
 
 ## Install
 
-OpenPIGUI is in public beta (**0.1.0-beta.38**) for **macOS (Apple Silicon)** and **Linux (AppImage)**.
+OpenPIGUI is in public beta (**0.1.0-beta.39**) for **macOS (Apple Silicon)** and **Linux (AppImage)**.
 Windows installers are also published when the release workflow succeeds.
 
 ### Download (recommended)
 
 Download the latest desktop build from the
 [Releases page](https://github.com/TNortnern/OpenPIGUI/releases)
-(beta builds are marked **Pre-release** — choose **0.1.0-beta.38**):
+(beta builds are marked **Pre-release** — choose **0.1.0-beta.39**):
 
-- **macOS:** [OpenPIGUI-0.1.0-beta.38-arm64.dmg](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.38/OpenPIGUI-0.1.0-beta.38-arm64.dmg) (or the matching `.zip` for auto-update)
-- **Linux:** [OpenPIGUI-0.1.0-beta.38-x86_64.AppImage](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.38/OpenPIGUI-0.1.0-beta.38-x86_64.AppImage)
+- **macOS:** [OpenPIGUI-0.1.0-beta.39-arm64.dmg](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.39/OpenPIGUI-0.1.0-beta.39-arm64.dmg) (or the matching `.zip` for auto-update)
+- **Linux:** [OpenPIGUI-0.1.0-beta.39-x86_64.AppImage](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.39/OpenPIGUI-0.1.0-beta.39-x86_64.AppImage)
 - **Windows:** `.exe` installer when published on the release
 
-Direct release: [v0.1.0-beta.38](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.38).
+Direct release: [v0.1.0-beta.39](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.39).
 
 **macOS**
 
 1. Open the `.dmg` and drag `OpenPIGUI.app` into `/Applications`.
 2. Launch **OpenPIGUI** from Applications or Spotlight.
-3. **Gatekeeper (beta.38 and other unsigned builds):** macOS may show *“Apple could not verify OpenPIGUI.app…”* because public betas are not Developer ID–signed/notarized until Apple signing secrets are configured in CI. That is expected, not malware.
-
-   **Unblock (pick one):**
-   - Finder: Control-click (right-click) `OpenPIGUI.app` → **Open** → confirm **Open**.
-   - Terminal (clears quarantine after install):
-
-     ```bash
-     xattr -cr /Applications/OpenPIGUI.app
-     ```
-
-     Then open the app again from Applications.
+3. If macOS says it cannot verify the current download, stop and report the release: macOS artifacts are required to be Developer ID–signed and notarized before CI publishes them.
 
 ### macOS signing secrets (maintainers)
 
-Public macOS downloads only clear Gatekeeper without the bypass above when release CI has:
+Public macOS downloads pass Gatekeeper when release CI has:
 
 | Secret | Purpose |
 | --- | --- |
@@ -69,7 +59,7 @@ Public macOS downloads only clear Gatekeeper without the bypass above when relea
 | `APPLE_API_KEY_ID` | Key ID |
 | `APPLE_API_ISSUER` | Issuer UUID |
 
-Until those exist, tagged mac releases either fail (default) or, with `ALLOW_UNSIGNED_MAC_RELEASE=true`, publish unsigned DMGs and must document this Gatekeeper bypass in the release notes.
+All five credentials are required. Missing or partial credentials fail the macOS job before packaging. The packaged release ZIP must then launch and start a thread before any assets are published.
 
 **Linux**
 

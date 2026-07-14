@@ -1,7 +1,7 @@
 {
   "name": "openpigui",
   "private": true,
-  "version": "0.1.0-beta.38",
+  "version": "0.1.0-beta.39",
   "license": "MIT",
   "packageManager": "pnpm@10.25.0",
   "scripts": {
@@ -24,6 +24,7 @@
     "test": "pnpm -r --if-present test",
     "bun:test": "for dir in apps/* packages/*; do (cd \"$dir\" && (grep -q '\"bun:test\":' package.json && bun run bun:test || (grep -q '\"test\":' package.json && bun run test))); done",
     "e2e": "playwright test",
+    "test:mac-release-credentials": "node --test scripts/test-mac-release-credentials.mjs",
     "test:homebrew-tap": "node scripts/test-update-homebrew-tap.mjs",
     "verify:install-copy": "node scripts/verify-install-copy.mjs",
     "verify:homebrew-flow": "node scripts/verify-homebrew-flow.mjs",

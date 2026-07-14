@@ -59,7 +59,7 @@ Packaged production builds check GitHub Releases through a narrow main-process u
 
 | Platform | Updater artifact | Notes |
 | --- | --- | --- |
-| macOS (Apple Silicon) | ZIP + `latest-mac.yml` + `.zip.blockmap` (signed/notarized when secrets exist) | Primary auto-update surface. Release CI **fails** without `CSC_LINK` unless `ALLOW_UNSIGNED_MAC_RELEASE=true`. Notarizes when `APPLE_API_KEY` / `APPLE_API_KEY_ID` / `APPLE_API_ISSUER` are set. Unsigned builds need Gatekeeper bypass (right-click Open or `xattr -cr`). |
+| macOS (Apple Silicon) | Signed/notarized ZIP + `latest-mac.yml` + `.zip.blockmap` | Primary auto-update surface. Release CI requires complete signing and notarization credentials, rejects missing or partial credential sets, and launches the packaged ZIP before publish. |
 | Windows | NSIS installer + `latest.yml` + `.exe.blockmap` | Supported when NSIS metadata is present on the release. |
 | Linux | AppImage + `latest-linux*.yml` + `.AppImage.zsync` | Supported when AppImage metadata is present on the release. |
 | Other formats (DMG, portable EXE, unpacked builds) | Manual download fallback | These install paths are not wired to electron-updater; use the GitHub release asset directly. |
@@ -87,9 +87,9 @@ PI_APP_PACKAGED_UPDATE_BASE=/path/to/N PI_APP_PACKAGED_UPDATE_NEXT=/path/to/N+1 
 
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
 
-## Release notes (0.1.0-beta.38)
+## Release notes (0.1.0-beta.39)
 
-- **Downloads:** Install from [GitHub Releases `v0.1.0-beta.38`](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.38) (macOS DMG/zip; Linux/Windows when the release workflow publishes them).
+- **Downloads:** Install from [GitHub Releases `v0.1.0-beta.39`](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.39) (macOS DMG/zip; Linux/Windows when the release workflow publishes them).
 - **In-app updates:** Sidebar footer shows check/download/restart status; macOS menu Check for Updates focuses the same control. Restart is user-initiated and waits for persistence flush.
 - **Composer / multitask:** Skill tokens, context blocks (including thread drops), terminal add-to-chat, optimistic composer status, and multitask chrome.
 - **Model UX:** Searchable model picker, visibility menu (Cursor and other providers), thinking-level options, agent inspector polish.
