@@ -63,7 +63,7 @@ async function emitRunningSnapshot(
   await emitTestSessionEvent(harness, event);
 }
 
-test("shows Multitask and Working pills while a prompt is running", async () => {
+test("shows Multitask badge while running and keeps the composer typeable", async () => {
   test.setTimeout(90_000);
   const userDataDir = await makeUserDataDir();
   const workspacePath = await makeWorkspace("multitask-discoverability");
@@ -81,26 +81,17 @@ test("shows Multitask and Working pills while a prompt is running", async () => 
     // Multitask must appear as soon as a run is active — not only after a follow-up is queued.
     await expect(window.getByTestId("composer-status-multitask-pill")).toBeVisible();
     await expect(window.getByTestId("composer-status-multitask-pill")).toHaveText(/Multitask/);
+    await expect(window.getByTestId("composer-multitask-badge")).toBeVisible();
+    await expect(window.getByTestId("composer-multitask-badge")).toContainText("Enter queues");
+
+    // No Multitask overlay dialog — composer stays typeable.
+    await expect(window.getByRole("dialog", { name: "Multitask" })).toHaveCount(0);
+    const composer = window.getByTestId("composer");
+    await composer.fill("queue this after the run");
+    await expect(composer).toHaveValue("queue this after the run");
 
     await window.getByTestId("composer-status-working-pill").click();
     await expect(window.getByRole("dialog", { name: /Working/i })).toBeVisible();
-
-    await window.getByTestId("composer-status-multitask-pill").click();
-    const multitaskDialog = window.getByRole("dialog", { name: "Multitask" });
-    await expect(multitaskDialog).toBeVisible();
-    await expect(multitaskDialog).toContainText("Enter queues it next. ⌘Enter steers the current run.");
-    const dialogLayout = await multitaskDialog.evaluate((element) => {
-      const bounds = element.getBoundingClientRect();
-      return {
-        left: bounds.left,
-        right: bounds.right,
-        viewportWidth: window.innerWidth,
-        hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
-      };
-    });
-    expect(dialogLayout.left).toBeGreaterThanOrEqual(0);
-    expect(dialogLayout.right).toBeLessThanOrEqual(dialogLayout.viewportWidth);
-    expect(dialogLayout.hasHorizontalOverflow).toBe(false);
 
     const queuedMessage: SessionQueuedMessage = {
       id: "queued-multitask-1",
@@ -112,6 +103,7 @@ test("shows Multitask and Working pills while a prompt is running", async () => 
     };
     await emitRunningSnapshot(harness, window, [queuedMessage]);
     await expect(window.getByTestId("composer-status-multitask-pill")).toHaveText(/Multitask · 1/);
+    await expect(window.getByTestId("composer-multitask-badge")).toContainText(/Multitask · 1/);
     await expect(window.getByTestId("queued-composer-message")).toContainText("queue this after the run");
   } finally {
     await harness.close();

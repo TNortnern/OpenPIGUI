@@ -180,8 +180,6 @@ export function ComposerPanel({
         terminalVisible={terminalVisible}
         queuedMessages={queuedMessages}
         peerWorkingAgents={peerWorkingAgents}
-        hasComposerInput={hasComposerInput}
-        onQueueDraft={onSubmit}
         onStopRun={onStopRun}
         onShowTerminal={onShowTerminal}
         onSelectWorkingAgent={onSelectWorkingAgent}
@@ -200,6 +198,13 @@ export function ComposerPanel({
             setComposerDraft={setComposerDraft}
             composerRef={composerRef}
             attachments={attachments}
+            multitaskLabel={
+              selectedSession.status === "running"
+                ? queuedMessages.length > 0
+                  ? `Multitask · ${queuedMessages.length}`
+                  : "Multitask"
+                : undefined
+            }
             queuedMessages={queuedMessages}
             editingQueuedMessageId={editingQueuedMessageId}
             slashSections={slashSections}

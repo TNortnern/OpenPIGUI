@@ -23,7 +23,7 @@ import type { TerminalPanelSnapshot, TerminalSessionSnapshot } from "./ipc";
 import { multitaskPillLabel, shouldShowMultitask } from "./multitask-status";
 import type { TranscriptMessage } from "./timeline-types";
 
-type StatusPanel = "none" | "working" | "terminal" | "context" | "multitask";
+type StatusPanel = "none" | "working" | "terminal" | "context";
 
 export interface WorkingAgentEntry {
   readonly id: string;
@@ -47,9 +47,6 @@ interface ComposerStatusChromeProps {
   readonly terminalVisible: boolean;
   readonly queuedMessages?: readonly QueuedComposerMessage[];
   readonly peerWorkingAgents?: readonly WorkingAgentEntry[];
-  /** Non-empty draft/attachments while a run is active — surfaces Multitask before queueing. */
-  readonly hasComposerInput?: boolean;
-  readonly onQueueDraft?: () => void;
   readonly onStopRun: () => void;
   readonly onShowTerminal?: () => void;
   readonly onSelectWorkingAgent?: (agentId: string) => void;
@@ -67,8 +64,6 @@ export function ComposerStatusChrome({
   terminalVisible,
   queuedMessages = [],
   peerWorkingAgents = [],
-  hasComposerInput = false,
-  onQueueDraft,
   onStopRun,
   onShowTerminal,
   onSelectWorkingAgent,
@@ -201,7 +196,7 @@ export function ComposerStatusChrome({
   }, [panel]);
 
   useEffect(() => {
-    if (!isWorking && (panel === "working" || panel === "multitask")) {
+    if (!isWorking && panel === "working") {
       setPanel("none");
     }
   }, [isWorking, panel]);
@@ -227,15 +222,13 @@ export function ComposerStatusChrome({
             </button>
           ) : null}
           {showMultitask ? (
-            <button
-              type="button"
-              className={`composer-status__pill${panel === "multitask" ? " composer-status__pill--active" : ""}`}
+            <span
+              className="composer-status__pill composer-status__pill--badge"
               data-testid="composer-status-multitask-pill"
-              aria-expanded={panel === "multitask"}
-              onClick={() => togglePanel("multitask")}
+              title="Type in the composer to queue a follow-up. ⌘Enter steers the current run."
             >
-              <span>{multitaskPillLabel(queuedCount)}</span>
-            </button>
+              {multitaskPillLabel(queuedCount)}
+            </span>
           ) : null}
           {terminalCount > 0 ? (
             <button
@@ -341,72 +334,6 @@ export function ComposerStatusChrome({
                 <span className="composer-status__item-badge">Queued</span>
               )}
             </div>
-          ))}
-        </StatusCard>
-      ) : null}
-
-      {panel === "multitask" && showMultitask ? (
-        <StatusCard
-          title="Multitask"
-          className="composer-status__card--multitask"
-          onClose={() => setPanel("none")}
-          headerActions={
-            hasComposerInput && onQueueDraft ? (
-              <button
-                type="button"
-                className="composer-status__text-action"
-                data-testid="composer-status-queue-draft"
-                onClick={() => {
-                  onQueueDraft();
-                }}
-              >
-                Queue draft
-              </button>
-            ) : undefined
-          }
-        >
-          <div className="composer-status__item composer-status__item--multitask">
-            <div className="composer-status__item-body">
-              <span className="composer-status__item-title">
-                {queuedCount > 0
-                  ? "Queued next"
-                  : hasComposerInput
-                    ? "Send without interrupting"
-                    : "Add another prompt"}
-              </span>
-              <span className="composer-status__item-meta">
-                {queuedCount > 0
-                  ? `${queuedCount} follow-up${queuedCount === 1 ? "" : "s"} will start when the current prompt finishes.`
-                  : hasComposerInput
-                    ? "Enter queues it next. ⌘Enter steers the current run."
-                    : "Type below. Enter queues it next. ⌘Enter steers the current run."}
-              </span>
-            </div>
-          </div>
-          {queuedMessages.map((message) => (
-            <button
-              key={message.id}
-              type="button"
-              className="composer-status__item composer-status__item--working composer-status__item--button"
-              onClick={() =>
-                onInspectWorkingAgent?.({
-                  id: `queued:${message.id}`,
-                  title: message.mode === "steer" ? "Steer" : "Follow-up",
-                  detail: message.text.trim() || "Queued message",
-                  kind: "queued",
-                  prompt: message.text,
-                  workspaceId: selectedWorkspace.id,
-                  sessionId: selectedSession.id,
-                })
-              }
-            >
-              <GripIcon />
-              <div className="composer-status__item-body">
-                <span className="composer-status__item-title">{message.mode === "steer" ? "Steer" : "Follow-up"}</span>
-                <span className="composer-status__item-meta">{message.text.trim() || "Queued message"}</span>
-              </div>
-              <span className="composer-status__item-badge">Queued</span>
-            </button>
           ))}
         </StatusCard>
       ) : null}
