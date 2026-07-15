@@ -26,20 +26,20 @@ execution all run through upstream `pi`.
 
 ## Install
 
-OpenPIGUI is in public beta (**0.1.0-beta.44**) for **macOS (Apple Silicon)** and **Linux (AppImage)**.
+OpenPIGUI is in public beta (**0.1.0-beta.45**) for **macOS (Apple Silicon)** and **Linux (AppImage)**.
 Windows installers are also published when the release workflow succeeds.
 
 ### Download (recommended)
 
 Download the latest desktop build from the
 [Releases page](https://github.com/TNortnern/OpenPIGUI/releases)
-(beta builds are marked **Pre-release** — choose **0.1.0-beta.44**):
+(beta builds are marked **Pre-release** — choose **0.1.0-beta.45**):
 
-- **macOS:** [OpenPIGUI-0.1.0-beta.44-arm64.dmg](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.44/OpenPIGUI-0.1.0-beta.44-arm64.dmg) (or the matching `.zip` for auto-update)
-- **Linux:** [OpenPIGUI-0.1.0-beta.44-x86_64.AppImage](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.44/OpenPIGUI-0.1.0-beta.44-x86_64.AppImage)
+- **macOS:** [OpenPIGUI-0.1.0-beta.45-arm64.dmg](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.45/OpenPIGUI-0.1.0-beta.45-arm64.dmg) (or the matching `.zip` for auto-update)
+- **Linux:** [OpenPIGUI-0.1.0-beta.45-x86_64.AppImage](https://github.com/TNortnern/OpenPIGUI/releases/download/v0.1.0-beta.45/OpenPIGUI-0.1.0-beta.45-x86_64.AppImage)
 - **Windows:** `.exe` installer when published on the release
 
-Direct release: [v0.1.0-beta.44](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.44).
+Direct release: [v0.1.0-beta.45](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.45).
 
 **macOS**
 
