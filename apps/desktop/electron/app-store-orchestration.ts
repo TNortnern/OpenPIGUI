@@ -222,25 +222,18 @@ async function createChildThreadRecord(
       publishSelectedTranscript: false,
     });
 
-    // Await prompt start so Multitask Working count can include the peer immediately.
-    // Tool-spawned children keep fire-and-forget via sourceToolCallId path callers.
-    if (input.sourceToolCallId) {
-      void submitComposerToSession(store, childRef, prompt, [], {
-        deliverAs: "followUp",
-        allowCommands: false,
-      }).catch((error) => {
-        void store.withError(error);
-      });
-    } else {
-      try {
-        await submitComposerToSession(store, childRef, prompt, [], {
-          deliverAs: "followUp",
-          allowCommands: false,
-        });
-      } catch (error) {
-        void store.withError(error);
-      }
-    }
+    // Publish the child into UI state before the peer run starts so Multitask
+    // Working can rise immediately. Never await sendUserMessage here — it can
+    // block for the whole child turn and freeze the parent spawn IPC.
+    await store.persistUiState();
+    store.emit();
+
+    void submitComposerToSession(store, childRef, prompt, [], {
+      deliverAs: "followUp",
+      allowCommands: false,
+    }).catch((error) => {
+      void store.withError(error);
+    });
 
     return store.state.orchestrationChildren.find((entry) => entry.id === child.id) ?? childWithEvidence;
   } finally {
