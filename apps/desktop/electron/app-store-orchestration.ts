@@ -229,7 +229,6 @@ async function createChildThreadRecord(
     store.emit();
 
     void submitComposerToSession(store, childRef, prompt, [], {
-      deliverAs: "followUp",
       allowCommands: false,
     }).catch((error) => {
       void store.withError(error);
