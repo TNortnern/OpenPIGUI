@@ -87,6 +87,11 @@ PI_APP_PACKAGED_UPDATE_BASE=/path/to/N PI_APP_PACKAGED_UPDATE_NEXT=/path/to/N+1 
 
 Live agent tests use your existing `pi` runtime and provider auth. If local `pi` runs do not work, the `live` lane will not be meaningful either.
 
+## Release notes (0.1.0-beta.42)
+
+- **Downloads:** Install from [GitHub Releases `v0.1.0-beta.42`](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.42) (macOS DMG/zip; Linux/Windows when the release workflow publishes them).
+- **Multitask:** Cursor-style badge/chip while a run is active; composer stays typeable (Enter queues, Cmd+Enter steers). Removed the Multitask overlay that blocked the prompt box.
+
 ## Release notes (0.1.0-beta.41)
 
 - **Downloads:** Install from [GitHub Releases `v0.1.0-beta.41`](https://github.com/TNortnern/OpenPIGUI/releases/tag/v0.1.0-beta.41) (macOS DMG/zip; Linux/Windows when the release workflow publishes them).
