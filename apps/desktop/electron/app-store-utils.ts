@@ -213,6 +213,12 @@ function buildSessionRecord(
   const preview = previewFromTranscript(transcript) ?? session.previewSnippet ?? session.title;
   const lastViewedAt = lastViewedAtBySession.get(key);
   const pinnedAt = pinnedAtBySession.get(key);
+  const status =
+    session.status === "failed"
+      ? "failed"
+      : runningSinceBySession.has(key)
+        ? "running"
+        : session.status;
   return {
     id: session.sessionRef.sessionId,
     title: session.title,
@@ -221,9 +227,10 @@ function buildSessionRecord(
     lastViewedAt,
     archivedAt: session.archivedAt,
     preview,
-    status: session.status,
+    // listSessions can lag behind an in-flight run; trust the live runningSince map.
+    status,
     runningSince: runningSinceBySession.get(key),
-    hasUnseenUpdate: hasUnseenSessionUpdate(session.status, session.updatedAt, lastViewedAt, transcript),
+    hasUnseenUpdate: hasUnseenSessionUpdate(status, session.updatedAt, lastViewedAt, transcript),
     config: sessionConfigBySession.get(key),
   };
 }
