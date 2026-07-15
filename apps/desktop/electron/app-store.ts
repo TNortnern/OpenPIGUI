@@ -53,6 +53,7 @@ import {
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SendChildThreadFollowUpInput,
+  type SpawnChildThreadInput,
   type SetChildSupervisionLoopInput,
   type SelectedTranscriptRecord,
   type StartThreadInput,
@@ -656,6 +657,12 @@ export class DesktopAppStore implements AppStoreInternals {
 
   async sendChildThreadFollowUp(input: SendChildThreadFollowUpInput): Promise<DesktopAppState> {
     const state = await orchestration.sendChildThreadFollowUp(this, input);
+    this.scheduleOrchestrationSupervision();
+    return state;
+  }
+
+  async spawnChildThread(input: SpawnChildThreadInput): Promise<DesktopAppState> {
+    const state = await orchestration.spawnChildThreadForUser(this, input);
     this.scheduleOrchestrationSupervision();
     return state;
   }

@@ -70,10 +70,31 @@ async function spawnChildThread(
 ): Promise<DesktopAppState> {
   try {
     await createChildThreadRecord(store, input);
-    return structuredClone(store.state);
+    await store.persistUiState();
+    return store.emit();
   } catch (error) {
     return store.withError(error);
   }
+}
+
+/** User-facing Multitask spawn — same child session path as create_child_thread, no tool call id. */
+export async function spawnChildThreadForUser(
+  store: AppStoreInternals,
+  input: {
+    readonly parentWorkspaceId: string;
+    readonly parentSessionId: string;
+    readonly prompt: string;
+    readonly provider?: string;
+    readonly model?: string;
+  },
+): Promise<DesktopAppState> {
+  return spawnChildThread(store, {
+    parentWorkspaceId: input.parentWorkspaceId,
+    parentSessionId: input.parentSessionId,
+    prompt: input.prompt,
+    ...(input.provider ? { provider: input.provider } : {}),
+    ...(input.model ? { model: input.model } : {}),
+  });
 }
 
 async function createChildThreadRecord(

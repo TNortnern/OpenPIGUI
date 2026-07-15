@@ -534,11 +534,13 @@ export default function App() {
     setMultitaskArmed(false);
   }, [selectedSessionKey]);
 
+  // While a run is active, Multitask means parallel agents: Enter spawns, Working count rises.
   useEffect(() => {
     if (selectedSession?.status === "running") {
-      setMultitaskArmed(false);
+      setMultitaskArmed(true);
     }
-  }, [selectedSession?.status]);
+  }, [selectedSession?.status, selectedSessionKey]);
+
   composerDraftRef.current = composerDraft;
   const isRightRailOpen = Boolean(selectedSessionKey) && activeRailSession.open;
   const rightRailMode = activeRailSession.mode;
@@ -1374,10 +1376,6 @@ export default function App() {
     allowTreeCommand: true,
     onRunTreeCommand: openTreeModal,
     onTriggerMultitask: () => {
-      if (selectedSession?.status === "running") {
-        focusComposer();
-        return;
-      }
       setMultitaskArmed(true);
       focusComposer();
     },
@@ -2296,12 +2294,8 @@ export default function App() {
 
     if (composerDraft.trim().toLowerCase() === MULTITASK_SLASH_COMMAND) {
       setComposerDraft("");
-      if (selectedSession.status === "running") {
-        focusComposer();
-      } else {
-        setMultitaskArmed(true);
-        focusComposer();
-      }
+      setMultitaskArmed(true);
+      focusComposer();
       return;
     }
 
@@ -2330,8 +2324,17 @@ export default function App() {
     const looksLikeCommand =
       Boolean(parseComposerCommand(previousDraft)) ||
       hasRuntimeSlashCommand(previousDraft, selectedRuntime, selectedSessionCommands);
+    const shouldSpawnMultitaskChild =
+      Boolean(api) &&
+      Boolean(selectedWorkspace) &&
+      isRunning &&
+      deliverAs === "followUp" &&
+      previousAttachments.length === 0 &&
+      previousDraft.trim().length > 0;
     // Follow-ups stay in the composer queue until the run dequeues them — don't fake a timeline bubble.
-    const shouldShowOptimisticBubble = (!isRunning || deliverAs === "steer") && !looksLikeCommand;
+    // Multitask spawns run on a child session, so skip optimistic parent bubbles there too.
+    const shouldShowOptimisticBubble =
+      !shouldSpawnMultitaskChild && (!isRunning || deliverAs === "steer") && !looksLikeCommand;
 
     rememberComposerHistory(selectedSessionKey, previousDraft);
     composerHistoryCursorRef.current = null;
@@ -2354,10 +2357,18 @@ export default function App() {
 
     void (async () => {
       const nextState = await updateSnapshot(api, setSnapshot, () =>
-        api.submitComposer(previousDraft, {
-          ...(deliverAs ? { deliverAs } : {}),
-          ...(shouldShowOptimisticBubble ? { clientMessageId } : {}),
-        }),
+        shouldSpawnMultitaskChild && selectedWorkspace
+          ? api.spawnChildThread({
+              parentWorkspaceId: selectedWorkspace.id,
+              parentSessionId: selectedSession.id,
+              prompt: previousDraft.trim(),
+              ...(resolvedSessionProvider ? { provider: resolvedSessionProvider } : {}),
+              ...(resolvedSessionModelId ? { model: resolvedSessionModelId } : {}),
+            })
+          : api.submitComposer(previousDraft, {
+              ...(deliverAs ? { deliverAs } : {}),
+              ...(shouldShowOptimisticBubble ? { clientMessageId } : {}),
+            }),
       );
       // Only apply the resolved draft if the user hasn't typed into the composer during the
       // in-flight submit; otherwise their new input would be clobbered.
@@ -3439,41 +3450,44 @@ export default function App() {
               transcript={activeTranscript}
               contextUsage={selectedTranscriptForSession?.contextUsage}
               terminalVisible={isTerminalVisibleForSelectedThread}
-              peerWorkingAgents={(selectedWorkspace?.sessions ?? [])
-                .filter((session) => session.status === "running" && session.id !== selectedSession.id)
-                .map((session) => ({
-                  id: session.id,
-                  title: session.title || "Agent",
-                  detail: "Running",
-                  kind: "running" as const,
-                  workspaceId: selectedWorkspace.id,
-                  sessionId: session.id,
-                  modelLabel: session.config?.provider && session.config.modelId
-                    ? `${session.config.provider}/${session.config.modelId}`
-                    : undefined,
-                }))
-                .concat(
-                  (snapshot?.orchestrationChildren ?? [])
-                    .filter(
-                      (child) =>
-                        (child.status === "running" || child.status === "waiting" || child.status === "queued") &&
-                        child.parentSessionId === selectedSession.id &&
-                        child.childSessionId !== selectedSession.id,
-                    )
-                    .map((child) => ({
-                      id: child.childSessionId,
-                      title: child.title || "Child agent",
-                      detail: child.status === "running" ? (child.latestTranscript || "Running") : child.status,
-                      kind: "running" as const,
-                      childThreadId: child.id,
-                      workspaceId: child.childWorkspaceId,
-                      sessionId: child.childSessionId,
-                      prompt: child.goal,
-                      modelLabel: [child.resolvedProvider ?? child.requestedProvider, child.resolvedModel ?? child.requestedModel]
-                        .filter(Boolean)
-                        .join("/") || undefined,
-                    })),
-                )}
+              peerWorkingAgents={(() => {
+                const peers = (selectedWorkspace?.sessions ?? [])
+                  .filter((session) => session.status === "running" && session.id !== selectedSession.id)
+                  .map((session) => ({
+                    id: session.id,
+                    title: session.title || "Agent",
+                    detail: "Running",
+                    kind: "running" as const,
+                    workspaceId: selectedWorkspace.id,
+                    sessionId: session.id,
+                    modelLabel: session.config?.provider && session.config.modelId
+                      ? `${session.config.provider}/${session.config.modelId}`
+                      : undefined,
+                  }));
+                const seen = new Set(peers.map((peer) => peer.id));
+                const children = (snapshot?.orchestrationChildren ?? [])
+                  .filter(
+                    (child) =>
+                      (child.status === "running" || child.status === "waiting" || child.status === "queued") &&
+                      child.parentSessionId === selectedSession.id &&
+                      child.childSessionId !== selectedSession.id &&
+                      !seen.has(child.childSessionId),
+                  )
+                  .map((child) => ({
+                    id: child.childSessionId,
+                    title: child.title || "Child agent",
+                    detail: child.status === "running" ? (child.latestTranscript || "Running") : child.status,
+                    kind: "running" as const,
+                    childThreadId: child.id,
+                    workspaceId: child.childWorkspaceId,
+                    sessionId: child.childSessionId,
+                    prompt: child.goal,
+                    modelLabel: [child.resolvedProvider ?? child.requestedProvider, child.resolvedModel ?? child.requestedModel]
+                      .filter(Boolean)
+                      .join("/") || undefined,
+                  }));
+                return peers.concat(children);
+              })()}
               onStopRun={handleStopRun}
               onSelectWorkingAgent={(sessionId) => {
                 if (!selectedWorkspace) {

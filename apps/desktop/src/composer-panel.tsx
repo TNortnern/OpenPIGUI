@@ -211,9 +211,9 @@ export function ComposerPanel({
             }
             multitaskHint={
               selectedSession.status === "running"
-                ? "Enter queues · ⌘Enter steers"
+                ? "Enter spawns another agent · ⌘Enter steers"
                 : multitaskArmed
-                  ? "Send a prompt — follow-ups queue while it runs"
+                  ? "Send a prompt, then Enter spawns more agents while it runs"
                   : undefined
             }
             queuedMessages={queuedMessages}
@@ -263,9 +263,11 @@ export function ComposerPanel({
                   <div className="composer__hint">
                     {selectedSession.status === "running"
                       ? hasComposerInput
-                        ? "Multitask · Enter to queue · Cmd+Enter to steer"
-                        : `${runningLabel} · type to Multitask · Cmd+Enter to steer`
-                      : "Enter to send · Shift+Enter for newline"}
+                        ? "Multitask · Enter spawns another agent · Cmd+Enter steers"
+                        : `${runningLabel} · Enter spawns another agent · Cmd+Enter steers`
+                      : multitaskArmed
+                        ? "Multitask armed · Enter to send · Shift+Enter for newline"
+                        : "Enter to send · Shift+Enter for newline"}
                     {" · "}
                     <ModelSelector
                       runtime={runtime}

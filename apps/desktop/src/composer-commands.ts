@@ -110,7 +110,7 @@ const HOST_ACTION_SLASH_COMMANDS: readonly ComposerSlashCommand[] = [
     command: MULTITASK_SLASH_COMMAND,
     template: MULTITASK_SLASH_COMMAND,
     title: "Multitask",
-    description: "Queue follow-ups while a run is active · Enter queues · Cmd+Enter steers",
+    description: "Spawn parallel agents while a run is active · Enter starts another · Cmd+Enter steers",
     submitMode: "immediate",
     section: "host",
     availableWhileRunning: true,

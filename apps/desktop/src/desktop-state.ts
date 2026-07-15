@@ -191,6 +191,14 @@ export interface SendChildThreadFollowUpInput {
   readonly text: string;
 }
 
+export interface SpawnChildThreadInput {
+  readonly parentWorkspaceId: string;
+  readonly parentSessionId: string;
+  readonly prompt: string;
+  readonly provider?: string;
+  readonly model?: string;
+}
+
 export interface SetChildSupervisionLoopInput {
   readonly childThreadId: string;
   readonly gate: Extract<OrchestrationSupervisionGate, "continue" | "stop">;

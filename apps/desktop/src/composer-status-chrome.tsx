@@ -225,7 +225,7 @@ export function ComposerStatusChrome({
             <span
               className="composer-status__pill composer-status__pill--badge"
               data-testid="composer-status-multitask-pill"
-              title="Type in the composer to queue a follow-up. ⌘Enter steers the current run."
+              title="Enter spawns another agent in this chat. ⌘Enter steers the current run."
             >
               {multitaskPillLabel(queuedCount)}
             </span>

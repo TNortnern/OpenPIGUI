@@ -17,6 +17,7 @@ import type {
   RemoveWorktreeInput,
   RightRailPreferences,
   SendChildThreadFollowUpInput,
+  SpawnChildThreadInput,
   SetChildSupervisionLoopInput,
   SelectedTranscriptRecord,
   StartThreadInput,
@@ -109,6 +110,7 @@ export const desktopIpc = {
   startThread: "pi-gui:start-thread",
   forkThread: "pi-gui:fork-thread",
   sendChildThreadFollowUp: "pi-gui:send-child-thread-follow-up",
+  spawnChildThread: "pi-gui:spawn-child-thread",
   setChildSupervisionLoop: "pi-gui:set-child-supervision-loop",
   cancelCurrentRun: "pi-gui:cancel-current-run",
   dismissLastError: "pi-gui:dismiss-last-error",
@@ -347,6 +349,7 @@ export interface PiDesktopApi {
   startThread(input: StartThreadInput): Promise<DesktopAppState>;
   forkThread(input: ForkThreadInput): Promise<DesktopAppState>;
   sendChildThreadFollowUp(input: SendChildThreadFollowUpInput): Promise<DesktopAppState>;
+  spawnChildThread(input: SpawnChildThreadInput): Promise<DesktopAppState>;
   setChildSupervisionLoop(input: SetChildSupervisionLoopInput): Promise<DesktopAppState>;
   cancelCurrentRun(): Promise<DesktopAppState>;
   dismissLastError(): Promise<DesktopAppState>;

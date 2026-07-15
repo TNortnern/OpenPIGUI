@@ -66,6 +66,7 @@ import type {
   ForkThreadInput,
   RemoveWorktreeInput,
   SendChildThreadFollowUpInput,
+  SpawnChildThreadInput,
   SetChildSupervisionLoopInput,
   StartThreadInput,
   WorkspaceSessionTarget,
@@ -1447,6 +1448,9 @@ app.whenReady().then(async () => {
   );
   ipcMain.handle(desktopIpc.sendChildThreadFollowUp, (event, input: SendChildThreadFollowUpInput) =>
     runWindowScopedForEvent(event, () => store.sendChildThreadFollowUp(input)),
+  );
+  ipcMain.handle(desktopIpc.spawnChildThread, (event, input: SpawnChildThreadInput) =>
+    runWindowScopedForEvent(event, () => store.spawnChildThread(input)),
   );
   ipcMain.handle(desktopIpc.setChildSupervisionLoop, (event, input: SetChildSupervisionLoopInput) =>
     runWindowScopedForEvent(event, () => store.setChildSupervisionLoop(input)),
