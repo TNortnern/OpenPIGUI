@@ -111,6 +111,7 @@ export const desktopIpc = {
   sendChildThreadFollowUp: "pi-gui:send-child-thread-follow-up",
   setChildSupervisionLoop: "pi-gui:set-child-supervision-loop",
   cancelCurrentRun: "pi-gui:cancel-current-run",
+  dismissLastError: "pi-gui:dismiss-last-error",
   setActiveView: "pi-gui:set-active-view",
   setSidebarCollapsed: "pi-gui:set-sidebar-collapsed",
   refreshRuntime: "pi-gui:refresh-runtime",
@@ -348,6 +349,7 @@ export interface PiDesktopApi {
   sendChildThreadFollowUp(input: SendChildThreadFollowUpInput): Promise<DesktopAppState>;
   setChildSupervisionLoop(input: SetChildSupervisionLoopInput): Promise<DesktopAppState>;
   cancelCurrentRun(): Promise<DesktopAppState>;
+  dismissLastError(): Promise<DesktopAppState>;
   setActiveView(view: AppView): Promise<DesktopAppState>;
   setSidebarCollapsed(collapsed: boolean): Promise<DesktopAppState>;
   refreshRuntime(workspaceId?: string): Promise<DesktopAppState>;

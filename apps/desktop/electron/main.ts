@@ -1468,6 +1468,9 @@ app.whenReady().then(async () => {
   ipcMain.handle(desktopIpc.cancelCurrentRun, (event) =>
     runWindowScopedForEvent(event, () => store.cancelCurrentRun()),
   );
+  ipcMain.handle(desktopIpc.dismissLastError, (event) =>
+    runWindowScopedForEvent(event, () => store.dismissLastError()),
+  );
   ipcMain.handle(desktopIpc.pickComposerAttachments, async (event) => {
     const window = resolveDialogWindow(BrowserWindow.fromWebContents(event.sender));
     const result =

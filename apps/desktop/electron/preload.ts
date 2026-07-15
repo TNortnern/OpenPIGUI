@@ -173,6 +173,7 @@ contextBridge.exposeInMainWorld("piApp", {
   setChildSupervisionLoop: (input: SetChildSupervisionLoopInput) =>
     ipcRenderer.invoke(desktopIpc.setChildSupervisionLoop, input) as Promise<DesktopAppState>,
   cancelCurrentRun: () => ipcRenderer.invoke(desktopIpc.cancelCurrentRun) as Promise<DesktopAppState>,
+  dismissLastError: () => ipcRenderer.invoke(desktopIpc.dismissLastError) as Promise<DesktopAppState>,
   setActiveView: (view: AppView) =>
     ipcRenderer.invoke(desktopIpc.setActiveView, view) as Promise<DesktopAppState>,
   setSidebarCollapsed: (collapsed: boolean) =>

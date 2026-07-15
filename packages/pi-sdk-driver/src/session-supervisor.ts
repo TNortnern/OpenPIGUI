@@ -156,6 +156,10 @@ interface ManagedSessionRecord {
   leasePath: string | undefined;
   /** mtime (epoch ms) of the JSONL last reconciled into the served transcript. */
   transcriptDiskMtimeMs: number | undefined;
+  /** Epoch ms of first assistant text_delta in the current generation (tok/s denominator). */
+  generationStartedAtMs: number | undefined;
+  /** Epoch ms when the last assistant message finished streaming (tok/s numerator window end). */
+  generationEndedAtMs: number | undefined;
 }
 
 interface RegisteredCommandAdapter {
@@ -433,7 +437,8 @@ export class SessionSupervisor {
    * Live context-window usage from pi's AgentSession.getContextUsage().
    * Requires an open session with a selected model; returns undefined otherwise.
    * Category breakdowns (system/tools/rules) are not exposed by pi — only totals.
-   * tokensPerSecond is derived from the last assistant message usage/timestamps.
+   * tokensPerSecond is derived from the last assistant message usage and the
+   * first streamed text_delta timestamp for that generation (excludes TTFT).
    */
   async getContextUsage(sessionRef: SessionRef): Promise<SessionContextUsage | undefined> {
     const record = this.records.get(sessionKey(sessionRef));
@@ -448,7 +453,7 @@ export class SessionSupervisor {
       tokens: usage.tokens,
       contextWindow: usage.contextWindow,
       percent: usage.percent,
-      tokensPerSecond: deriveTokensPerSecond(record.session),
+      tokensPerSecond: deriveTokensPerSecond(record.session, record.generationStartedAtMs, record.generationEndedAtMs),
     };
   }
 
@@ -807,7 +812,13 @@ export class SessionSupervisor {
     }
 
     try {
-      await record.session.abort();
+      // Fire AbortController immediately (pi TUI pattern). Do not await waitForIdle —
+      // that blocks Stop/Escape on provider teardown and feels non-instant.
+      record.session.abortRetry();
+      record.session.agent.abort();
+      void record.session.waitForIdle().catch((error) => {
+        console.warn(`[pi-sdk-driver] waitForIdle after abort failed for ${sessionKey(record.ref)}:`, error);
+      });
     } catch (error) {
       // Abort is best-effort. Even if the runtime reports a failure we still
       // reset local run state below so the UI does not stay stuck on "running".
@@ -822,6 +833,8 @@ export class SessionSupervisor {
     record.queuedMessages = [];
     record.runningRunId = undefined;
     record.status = "idle";
+    record.generationStartedAtMs = undefined;
+    record.generationEndedAtMs = undefined;
     await this.persistSnapshot(record);
     await this.emit(record, sessionUpdatedEvent(record));
   }
@@ -1084,6 +1097,8 @@ export class SessionSupervisor {
       sessionCommands: [],
       leasePath: undefined,
       transcriptDiskMtimeMs: undefined,
+      generationStartedAtMs: undefined,
+      generationEndedAtMs: undefined,
     };
     return record;
   }
@@ -1781,7 +1796,9 @@ export class SessionSupervisor {
       return;
     }
 
-    this.queueDriverEvents(record, mapped);
+    // Streaming text must stay off the catalog persist + sessionUpdated twin path.
+    const onlyAssistantDeltas = mapped.every((entry) => entry.type === "assistantDelta");
+    this.queueDriverEvents(record, mapped, onlyAssistantDeltas ? { persistSnapshot: false } : undefined);
   }
 
   private mapAgentEvent(record: ManagedSessionRecord, event: AgentSessionEvent): SessionDriverEvent[] {
@@ -1794,6 +1811,14 @@ export class SessionSupervisor {
         return [sessionUpdatedEvent(record)];
       case "message_start":
       case "message_end":
+        if (event.message.role === "assistant" && event.type === "message_start") {
+          // New assistant message: next text_delta starts a fresh generation window.
+          record.generationStartedAtMs = undefined;
+          record.generationEndedAtMs = undefined;
+        }
+        if (event.message.role === "assistant" && event.type === "message_end") {
+          record.generationEndedAtMs = Date.now();
+        }
         if (event.message.role === "user") {
           const queuedMessage = reconcileQueuedMessagesForStartedUserMessage(record, event.message, timestamp);
           if (queuedMessage) {
@@ -1811,12 +1836,17 @@ export class SessionSupervisor {
       case "message_update":
         this.updatePreviewFromMessage(record, event.message);
         if (event.message.role === "assistant" && event.assistantMessageEvent.type === "text_delta") {
-          return toDriverEvents({
+          if (record.generationStartedAtMs == null) {
+            record.generationStartedAtMs = Date.now();
+          }
+          // Delta only — skip sessionUpdated twin so the desktop hot path stays cheap.
+          return [{
             type: "assistantDelta" as const,
             sessionRef: record.ref,
             timestamp,
             text: event.assistantMessageEvent.delta ?? "",
-          }, record);
+            ...(record.runningRunId ? { runId: record.runningRunId } : {}),
+          }];
         }
         return [sessionUpdatedEvent(record)];
       case "tool_execution_start":
@@ -1855,6 +1885,7 @@ export class SessionSupervisor {
         record.runningRunId = undefined;
         record.status = outcome.success ? "idle" : "failed";
         record.updatedAt = timestamp;
+        // Keep generationStartedAtMs until getContextUsage reads tok/s, then clear on next turn.
         if (!outcome.success && outcome.error) {
           record.preview = outcome.error.message;
         }
@@ -2192,8 +2223,15 @@ function clampThinkingLevel(level: string, availableLevels: readonly string[]): 
   return availableLevels[0] ?? "off";
 }
 
-/** Last assistant output tokens / elapsed seconds since prior message (pi has no native TPS field). */
-function deriveTokensPerSecond(session: AgentSession): number | null {
+/** Last assistant output tokens / generation window from first streamed delta to message end. */
+export function deriveTokensPerSecond(
+  session: AgentSession,
+  generationStartedAtMs?: number | null,
+  generationEndedAtMs?: number | null,
+): number | null {
+  if (generationStartedAtMs == null || !Number.isFinite(generationStartedAtMs)) {
+    return null;
+  }
   const messages = session.messages;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
@@ -2205,25 +2243,19 @@ function deriveTokensPerSecond(session: AgentSession): number | null {
       usage && typeof usage === "object" && typeof (usage as { output?: unknown }).output === "number"
         ? (usage as { output: number }).output
         : null;
+    if (outputTokens == null || outputTokens <= 0) {
+      return null;
+    }
     const endMs =
-      typeof message.timestamp === "number" && Number.isFinite(message.timestamp)
-        ? message.timestamp
-        : null;
-    if (outputTokens == null || outputTokens <= 0 || endMs == null) {
+      generationEndedAtMs != null && Number.isFinite(generationEndedAtMs)
+        ? generationEndedAtMs
+        : typeof message.timestamp === "number" && Number.isFinite(message.timestamp)
+          ? message.timestamp
+          : null;
+    if (endMs == null || endMs <= generationStartedAtMs) {
       return null;
     }
-    let startMs: number | null = null;
-    for (let prior = index - 1; prior >= 0; prior -= 1) {
-      const previous = messages[prior];
-      if (previous && typeof previous.timestamp === "number" && Number.isFinite(previous.timestamp)) {
-        startMs = previous.timestamp;
-        break;
-      }
-    }
-    if (startMs == null || endMs <= startMs) {
-      return null;
-    }
-    const seconds = (endMs - startMs) / 1000;
+    const seconds = (endMs - generationStartedAtMs) / 1000;
     if (seconds <= 0) {
       return null;
     }

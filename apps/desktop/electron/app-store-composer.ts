@@ -453,11 +453,27 @@ export async function cancelCurrentRun(store: AppStoreInternals): Promise<Deskto
   return store.withErrorHandling(async () => {
     await store.driver.cancelCurrentRun(sessionRef);
     clearActiveAssistantMessage(store.sessionState.activeAssistantMessageBySession, sessionRef);
+    store.sessionState.runningSinceBySession.delete(sessionKey(sessionRef));
     store.sessionState.sessionErrorsBySession.delete(sessionKey(sessionRef));
+    // Stamp idle in the returned snapshot immediately. Driver sessionUpdated is
+    // FIFO-queued and can land after this IPC response — without this, Stop/Escape
+    // would briefly flip idle then resurrect "running" from a stale emit().
     store.state = {
       ...store.state,
       lastError: undefined,
       revision: store.state.revision + 1,
+      workspaces: store.state.workspaces.map((workspace) =>
+        workspace.id !== sessionRef.workspaceId
+          ? workspace
+          : {
+              ...workspace,
+              sessions: workspace.sessions.map((session) =>
+                session.id !== sessionRef.sessionId
+                  ? session
+                  : { ...session, status: "idle" as const, runningSince: undefined },
+              ),
+            },
+      ),
     };
     store.schedulePersistUiState();
     return store.emit();

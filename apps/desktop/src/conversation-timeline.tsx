@@ -21,6 +21,7 @@ interface ThreadSearchModel {
 interface ConversationTimelineProps {
   readonly transcript: readonly TranscriptMessage[];
   readonly isTranscriptLoading: boolean;
+  readonly sessionStreaming?: boolean;
   readonly timelinePaneRef: MutableRefObject<HTMLDivElement | null>;
   readonly timelinePaneElementRef?: RefCallback<HTMLDivElement>;
   readonly disableVirtualization?: boolean;
@@ -38,6 +39,7 @@ interface ConversationTimelineProps {
 export function ConversationTimeline({
   transcript,
   isTranscriptLoading,
+  sessionStreaming = false,
   timelinePaneRef,
   timelinePaneElementRef,
   disableVirtualization = false,
@@ -51,6 +53,19 @@ export function ConversationTimeline({
   onViewFileInDiff,
   onForkFromMessage,
 }: ConversationTimelineProps) {
+  const streamingAssistantMessageId = useMemo(() => {
+    if (!sessionStreaming) {
+      return undefined;
+    }
+    for (let index = transcript.length - 1; index >= 0; index -= 1) {
+      const item = transcript[index];
+      if (item?.kind === "message" && item.role === "assistant") {
+        return item.id;
+      }
+    }
+    return undefined;
+  }, [sessionStreaming, transcript]);
+
   const renderedMessageIndexById = useMemo(() => {
     const map = new Map<string, number>();
     let messageIndex = 0;
@@ -205,6 +220,7 @@ export function ConversationTimeline({
           onViewFileInDiff={onViewFileInDiff}
           renderedMessageIndexById={renderedMessageIndexById}
           onForkFromMessage={onForkFromMessage}
+          streamingAssistantMessageId={streamingAssistantMessageId}
         />
       ) : (
         <div className="timeline" data-testid="transcript">
@@ -218,6 +234,7 @@ export function ConversationTimeline({
               onViewFileInDiff={onViewFileInDiff}
               sourceMessageIndex={renderedMessageIndexById.get(item.id)}
               onForkFromMessage={onForkFromMessage}
+              deferMarkdown={item.id === streamingAssistantMessageId}
             />
           ))}
         </div>
@@ -243,6 +260,7 @@ function VirtualizedTranscriptList({
   onViewFileInDiff,
   renderedMessageIndexById,
   onForkFromMessage,
+  streamingAssistantMessageId,
 }: {
   readonly transcript: readonly TranscriptMessage[];
   readonly timelinePaneRef: MutableRefObject<HTMLDivElement | null>;
@@ -255,6 +273,7 @@ function VirtualizedTranscriptList({
   readonly onViewFileInDiff?: (path: string) => void;
   readonly renderedMessageIndexById: ReadonlyMap<string, number>;
   readonly onForkFromMessage?: (messageIndex: number, preview?: string) => void;
+  readonly streamingAssistantMessageId?: string;
 }) {
   const [viewport, setViewport] = useState({ scrollTop: 0, height: 0 });
   const previousTotalHeightRef = useRef(0);
@@ -334,6 +353,7 @@ function VirtualizedTranscriptList({
             onViewFileInDiff={onViewFileInDiff}
             sourceMessageIndex={renderedMessageIndexById.get(item.id)}
             onForkFromMessage={onForkFromMessage}
+            deferMarkdown={item.id === streamingAssistantMessageId}
           />
         );
       })}
@@ -351,6 +371,7 @@ function MeasuredTimelineItem({
   onViewFileInDiff,
   sourceMessageIndex,
   onForkFromMessage,
+  deferMarkdown = false,
 }: {
   readonly item: TranscriptMessage;
   readonly className?: string;
@@ -361,6 +382,7 @@ function MeasuredTimelineItem({
   readonly onViewFileInDiff?: (path: string) => void;
   readonly sourceMessageIndex?: number;
   readonly onForkFromMessage?: (messageIndex: number, preview?: string) => void;
+  readonly deferMarkdown?: boolean;
 }) {
   const rowRef = useRef<HTMLDivElement | null>(null);
 
@@ -398,6 +420,7 @@ function MeasuredTimelineItem({
         onViewFileInDiff={onViewFileInDiff}
         sourceMessageIndex={sourceMessageIndex}
         onForkFromMessage={onForkFromMessage}
+        deferMarkdown={deferMarkdown}
       />
     </div>
   );

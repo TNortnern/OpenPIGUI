@@ -417,6 +417,10 @@
 }
 
 .error-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   padding: 12px 14px;
   border-radius: 12px;
   background: rgba(196, 86, 102, 0.08);
@@ -425,6 +429,37 @@
   font-weight: 600;
   width: 100%;
   margin-bottom: 16px;
+}
+
+.error-banner__text {
+  min-width: 0;
+  flex: 1;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.error-banner__dismiss {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  color: var(--error-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.error-banner__dismiss:hover {
+  text-decoration: underline;
+  opacity: 1;
+}
+
+.error-banner__dismiss:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--error-ink) 35%, white 65%);
+  outline-offset: 3px;
+  border-radius: 4px;
 }
 
 .composer__error {
@@ -1450,6 +1485,11 @@
   overflow-wrap: anywhere;
 }
 
+.message__content--streaming {
+  display: block;
+  white-space: pre-wrap;
+}
+
 .message__content > :first-child {
   margin-top: 0;
 }
@@ -2001,6 +2041,15 @@
   width: min(320px, calc(100% - 8px));
 }
 
+.composer-status__card--multitask {
+  width: min(400px, calc(100% - 8px));
+}
+
+.composer-status__card--multitask .composer-status__card-body {
+  max-height: min(320px, 50vh);
+  overflow-y: auto;
+}
+
 .composer-status__card-header {
   display: flex;
   align-items: center;
@@ -2098,6 +2147,30 @@
 
 .composer-status__item--working .composer-status__item-body {
   flex-wrap: wrap;
+}
+
+.composer-status__item--multitask {
+  align-items: flex-start;
+  padding: 2px 0 4px;
+  background: transparent;
+}
+
+.composer-status__item--multitask .composer-status__item-body {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.composer-status__item--multitask .composer-status__item-title {
+  overflow: visible;
+  white-space: normal;
+}
+
+.composer-status__item--multitask .composer-status__item-meta {
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .composer-status__context-summary {

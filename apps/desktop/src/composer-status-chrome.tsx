@@ -348,6 +348,7 @@ export function ComposerStatusChrome({
       {panel === "multitask" && showMultitask ? (
         <StatusCard
           title="Multitask"
+          className="composer-status__card--multitask"
           onClose={() => setPanel("none")}
           headerActions={
             hasComposerInput && onQueueDraft ? (
@@ -364,23 +365,21 @@ export function ComposerStatusChrome({
             ) : undefined
           }
         >
-          <div className="composer-status__item">
+          <div className="composer-status__item composer-status__item--multitask">
             <div className="composer-status__item-body">
               <span className="composer-status__item-title">
                 {queuedCount > 0
-                  ? "Queued for after this run"
+                  ? "Queued next"
                   : hasComposerInput
-                    ? "Send while this run continues"
-                    : "Queue another prompt"}
+                    ? "Send without interrupting"
+                    : "Add another prompt"}
               </span>
               <span className="composer-status__item-meta">
                 {queuedCount > 0
                   ? `${queuedCount} follow-up${queuedCount === 1 ? "" : "s"} will start when the current prompt finishes.`
                   : hasComposerInput
-                    ? "Enter queues a follow-up for after this run. ⌘Enter steers the current run now."
-                    : "Type a follow-up below, then Enter to queue it — or ⌘Enter to steer the current run."}
-                {" "}
-                True parallel agents on one transcript are not enabled yet.
+                    ? "Enter queues it next. ⌘Enter steers the current run."
+                    : "Type below. Enter queues it next. ⌘Enter steers the current run."}
               </span>
             </div>
           </div>
@@ -445,17 +444,19 @@ export function ComposerStatusChrome({
 
 function StatusCard({
   title,
+  className,
   onClose,
   headerActions,
   children,
 }: {
   readonly title: string;
+  readonly className?: string;
   readonly onClose: () => void;
   readonly headerActions?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
-    <div className="composer-status__card" role="dialog" aria-label={title}>
+    <div className={`composer-status__card${className ? ` ${className}` : ""}`} role="dialog" aria-label={title}>
       <div className="composer-status__card-header">
         <span className="composer-status__card-title">{title}</span>
         <div className="composer-status__card-actions">

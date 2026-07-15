@@ -13,6 +13,7 @@ export function TimelineItem({
   onViewFileInDiff,
   sourceMessageIndex,
   onForkFromMessage,
+  deferMarkdown = false,
 }: {
   readonly item: TranscriptMessage;
   readonly expandedToolCallIds?: ReadonlySet<string>;
@@ -20,6 +21,7 @@ export function TimelineItem({
   readonly onViewFileInDiff?: (path: string) => void;
   readonly sourceMessageIndex?: number;
   readonly onForkFromMessage?: (messageIndex: number, preview?: string) => void;
+  readonly deferMarkdown?: boolean;
 }) {
   switch (item.kind) {
     case "message":
@@ -28,6 +30,7 @@ export function TimelineItem({
           item={item}
           sourceMessageIndex={sourceMessageIndex}
           onForkFromMessage={onForkFromMessage}
+          deferMarkdown={deferMarkdown}
         />
       );
     case "activity":
@@ -52,10 +55,12 @@ function TimelineMessage({
   item,
   sourceMessageIndex,
   onForkFromMessage,
+  deferMarkdown = false,
 }: {
   readonly item: SessionTranscriptMessage;
   readonly sourceMessageIndex?: number;
   readonly onForkFromMessage?: (messageIndex: number, preview?: string) => void;
+  readonly deferMarkdown?: boolean;
 }) {
   const [copyFeedback, setCopyFeedback] = useState<string | undefined>();
   useEffect(() => {
@@ -152,9 +157,16 @@ function TimelineMessage({
   }
 
   const canFork = onForkFromMessage != null && sourceMessageIndex !== undefined;
+  const body = deferMarkdown ? (
+    <div className="message__content message__content--streaming" data-testid="streaming-message-text">
+      {item.text}
+    </div>
+  ) : (
+    <MessageMarkdown text={item.text} />
+  );
   return (
     <article className="timeline-item timeline-item--assistant">
-      <MessageMarkdown text={item.text} />
+      {body}
       <div className="timeline-item__actions">
         <button
           aria-label="Copy message"

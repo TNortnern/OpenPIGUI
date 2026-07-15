@@ -147,6 +147,9 @@ export class DesktopAppStore implements AppStoreInternals {
   private readonly selectedTranscriptListeners = new Set<SelectedTranscriptListener>();
   private readonly sessionEventListeners = new Set<SessionEventListener>();
   private readonly sessionEventQueues = new Map<string, Promise<void>>();
+  /** Coalesce streaming transcript IPC to ~one publish per animation frame. */
+  private pendingTranscriptPublish: ReturnType<typeof setTimeout> | null = null;
+  private pendingTranscriptPublishSessionRef: SessionRef | null = null;
   /**
    * Trailing-edge coalescers for per-session command refreshes, keyed by session
    * key. A refresh request that arrives while one is already in flight marks it
@@ -599,6 +602,11 @@ export class DesktopAppStore implements AppStoreInternals {
       await orchestration.cancelChildRunsForParent(this, ref);
     }
     return composer.cancelCurrentRun(this);
+  }
+
+  async dismissLastError(): Promise<DesktopAppState> {
+    await this.initialize();
+    return this.refreshState({ clearLastError: true });
   }
 
   async getSessionTree(target: WorkspaceSessionTarget): Promise<SessionTreeSnapshot> {
@@ -2153,6 +2161,21 @@ export class DesktopAppStore implements AppStoreInternals {
     if (subscriptionKey !== key) {
       this.migrateSessionSubscriptionKey(subscriptionKey, key);
     }
+
+    // Hot path: streaming text only mutates the transcript cache + coalesced IPC.
+    // Skip full DesktopAppState clone, disk persist, and sessionUpdated fan-out.
+    if (event.type === "assistantDelta") {
+      appendAssistantDelta(
+        this.sessionState.transcriptCache,
+        this.sessionState.activeAssistantMessageBySession,
+        event.sessionRef,
+        event.text,
+      );
+      this.schedulePublishSelectedTranscriptFor(event.sessionRef);
+      await this.emitSessionEvent(event, this.state);
+      return;
+    }
+
     // Any transient failure while applying the event (a rejected refresh,
     // persistUiState, or listener) must never skip the final emit — otherwise the
     // UI is left stuck showing "running" forever. Apply-then-emit is wrapped so
@@ -2182,9 +2205,6 @@ export class DesktopAppStore implements AppStoreInternals {
       }
 
       switch (event.type) {
-        case "assistantDelta":
-          appendAssistantDelta(this.sessionState.transcriptCache, this.sessionState.activeAssistantMessageBySession, event.sessionRef, event.text);
-          break;
         case "sessionOpened":
         case "runCompleted":
           this.updateSessionConfig(event.sessionRef, event.snapshot.config);
@@ -2282,6 +2302,7 @@ export class DesktopAppStore implements AppStoreInternals {
     } catch (error) {
       console.error(`[app-store] failed to apply session event ${event.type} for ${key}`, error);
     } finally {
+      this.flushPendingTranscriptPublish();
       const snapshot = this.emit();
       this.publishSelectedTranscriptFor(event.sessionRef);
       await this.emitSessionEvent(event, snapshot);
@@ -2741,6 +2762,38 @@ export class DesktopAppStore implements AppStoreInternals {
       return;
     }
     this.publishSelectedTranscript();
+  }
+
+  /** Trailing coalesce so bursty text_delta streams don't flood the renderer. */
+  private schedulePublishSelectedTranscriptFor(sessionRef: SessionRef): void {
+    if (!this.isSelectedSession(sessionRef)) {
+      return;
+    }
+    this.pendingTranscriptPublishSessionRef = sessionRef;
+    if (this.pendingTranscriptPublish != null) {
+      return;
+    }
+    this.pendingTranscriptPublish = setTimeout(() => {
+      this.pendingTranscriptPublish = null;
+      const pendingRef = this.pendingTranscriptPublishSessionRef;
+      this.pendingTranscriptPublishSessionRef = null;
+      if (pendingRef) {
+        this.publishSelectedTranscriptFor(pendingRef);
+      }
+    }, 16);
+  }
+
+  private flushPendingTranscriptPublish(): void {
+    if (this.pendingTranscriptPublish == null) {
+      return;
+    }
+    clearTimeout(this.pendingTranscriptPublish);
+    this.pendingTranscriptPublish = null;
+    const pendingRef = this.pendingTranscriptPublishSessionRef;
+    this.pendingTranscriptPublishSessionRef = null;
+    if (pendingRef) {
+      this.publishSelectedTranscriptFor(pendingRef);
+    }
   }
 
   handleWindowActivation(): void {

@@ -30,6 +30,7 @@ interface ComposerPanelProps {
   readonly selectedWorkspace: WorkspaceRecord;
   readonly selectedWorktree?: WorktreeRecord;
   readonly lastError?: string;
+  readonly onDismissLastError?: () => void;
   readonly runtime?: RuntimeSnapshot;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
@@ -98,6 +99,7 @@ export function ComposerPanel({
   selectedWorkspace,
   selectedWorktree,
   lastError,
+  onDismissLastError,
   runtime,
   activeSlashCommand,
   activeSlashCommandMeta,
@@ -188,6 +190,7 @@ export function ComposerPanel({
         <div className="conversation conversation--composer">
           <ComposerSurface
             lastError={lastError}
+            onDismissLastError={onDismissLastError}
             activeSlashCommand={activeSlashCommand}
             activeSlashCommandMeta={activeSlashCommandMeta}
             topNotice={(

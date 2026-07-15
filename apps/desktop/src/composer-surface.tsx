@@ -21,6 +21,7 @@ type ComposerDragKind = "files" | "thread" | null;
 
 interface ComposerSurfaceProps {
   readonly lastError?: string;
+  readonly onDismissLastError?: () => void;
   readonly activeSlashCommand?: ComposerSlashCommand;
   readonly activeSlashCommandMeta?: string;
   readonly topNotice?: ReactNode;
@@ -70,6 +71,7 @@ interface ComposerSurfaceProps {
 
 export function ComposerSurface({
   lastError,
+  onDismissLastError,
   activeSlashCommand,
   activeSlashCommandMeta,
   topNotice,
@@ -278,8 +280,19 @@ export function ComposerSurface({
         <ExtensionDock dock={extensionDock} expanded={extensionDockExpanded} onToggle={onToggleExtensionDock} />
       ) : null}
       {lastError ? (
-        <div className="composer__error error-banner" data-testid="composer-error-banner">
-          {lastError}
+        <div className="composer__error error-banner" data-testid="composer-error-banner" role="alert">
+          <span className="error-banner__text">{lastError}</span>
+          {onDismissLastError ? (
+            <button
+              type="button"
+              className="error-banner__dismiss"
+              data-testid="composer-error-dismiss"
+              aria-label="Dismiss error"
+              onClick={onDismissLastError}
+            >
+              Dismiss
+            </button>
+          ) : null}
         </div>
       ) : null}
       <div className="composer__editor">

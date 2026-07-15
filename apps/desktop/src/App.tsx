@@ -109,6 +109,8 @@ function useDesktopAppState() {
   useEffect(() => {
     let active = true;
     let receivedPushedTranscript = false;
+    let pendingTranscript: SelectedTranscriptRecord | null = null;
+    let transcriptRaf: number | null = null;
     const api = window.piApp;
     if (!api) {
       return undefined;
@@ -118,6 +120,16 @@ function useDesktopAppState() {
     // snapshot with a lower revision overwrite a newer one already applied to state.
     const applyState = (incoming: DesktopAppState) => {
       applySnapshotIfNewer(setSnapshot, incoming);
+    };
+
+    const flushTranscript = () => {
+      transcriptRaf = null;
+      if (!active || !pendingTranscript) {
+        return;
+      }
+      const next = pendingTranscript;
+      pendingTranscript = null;
+      setSelectedTranscript(next);
     };
 
     void Promise.all([api.getState(), api.getSelectedTranscript()]).then(([state, transcript]) => {
@@ -138,14 +150,21 @@ function useDesktopAppState() {
       }
     });
     const unsubscribeTranscript = api.onSelectedTranscriptChanged((payload) => {
-      if (active) {
-        receivedPushedTranscript = true;
-        setSelectedTranscript(payload);
+      if (!active) {
+        return;
+      }
+      receivedPushedTranscript = true;
+      pendingTranscript = payload;
+      if (transcriptRaf == null) {
+        transcriptRaf = window.requestAnimationFrame(flushTranscript);
       }
     });
 
     return () => {
       active = false;
+      if (transcriptRaf != null) {
+        window.cancelAnimationFrame(transcriptRaf);
+      }
       unsubscribeState();
       unsubscribeTranscript();
     };
@@ -1084,11 +1103,33 @@ export default function App() {
   }, [isTerminalVisibleForSelectedThread, updateActiveRailSession]);
 
   const handleStopRun = useCallback(() => {
-    if (!api) {
+    if (!api || !selectedSession) {
       return;
     }
+    // Optimistic idle so Escape/Stop chrome flips before provider teardown finishes.
+    setSnapshot((current) => {
+      if (!current || !selectedWorkspace || !selectedSession) {
+        return current;
+      }
+      return {
+        ...current,
+        workspaces: current.workspaces.map((workspace) =>
+          workspace.id !== selectedWorkspace.id
+            ? workspace
+            : {
+                ...workspace,
+                sessions: workspace.sessions.map((session) =>
+                  session.id !== selectedSession.id
+                    ? session
+                    : { ...session, status: "idle" as const, runningSince: undefined },
+                ),
+              },
+        ),
+        revision: current.revision + 1,
+      };
+    });
     void updateSnapshot(api, setSnapshot, () => api.cancelCurrentRun());
-  }, [api]);
+  }, [api, selectedSession, selectedWorkspace]);
 
   const toggleBrowserPanel = useCallback(() => {
     toggleRightRailMode("browser");
@@ -1113,6 +1154,15 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const dismissComposerError = useCallback(() => {
+    setNewThreadComposerError(undefined);
+    setSnapshot((current) => (current ? { ...current, lastError: undefined } : current));
+    if (!api?.dismissLastError) {
+      return;
+    }
+    void updateSnapshot(api, setSnapshot, () => api.dismissLastError());
+  }, [api]);
 
   const toggleChangesPanel = useCallback(() => {
     toggleRightRailMode("changes");
@@ -2210,7 +2260,7 @@ export default function App() {
 
     const hasComposerInput = composerDraft.trim().length > 0 || composerAttachments.length > 0;
     if (selectedSession.status === "running" && !hasComposerInput) {
-      void updateSnapshot(api, setSnapshot, () => api.cancelCurrentRun());
+      handleStopRun();
       return;
     }
 
@@ -2897,6 +2947,19 @@ export default function App() {
       return;
     }
 
+    if (
+      event.key === "Escape" &&
+      selectedSession?.status === "running" &&
+      !mentionMenu.showMentionMenu &&
+      !skillMenu.showSkillMenu &&
+      !slashMenu.showSlashMenu &&
+      !slashMenu.showSlashOptionMenu
+    ) {
+      event.preventDefault();
+      handleStopRun();
+      return;
+    }
+
     if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing && selectedSession?.status === "running") {
       event.preventDefault();
       submitComposerDraft({ deliverAs: (event.metaKey || event.ctrlKey) ? "steer" : "followUp" });
@@ -3178,6 +3241,7 @@ export default function App() {
               prompt={newThreadPrompt}
               attachments={newThreadAttachments}
               lastError={newThreadComposerError}
+              onDismissLastError={dismissComposerError}
               provider={resolvedNewThreadProvider}
               modelId={resolvedNewThreadModelId}
               thinkingLevel={resolvedNewThreadThinkingLevel}
@@ -3276,6 +3340,7 @@ export default function App() {
                 <ConversationTimeline
                   transcript={activeTranscript}
                   isTranscriptLoading={isTranscriptLoading}
+                  sessionStreaming={selectedSession.status === "running"}
                   timelinePaneRef={timelinePaneRef}
                   timelinePaneElementRef={setTimelinePaneElement}
                   disableVirtualization={disableTimelineVirtualization}
@@ -3386,6 +3451,7 @@ export default function App() {
               }}
               onShowTerminal={showTerminal}
               lastError={snapshot.lastError}
+              onDismissLastError={dismissComposerError}
               selectedSlashCommand={slashMenu.activeSlashOptionCommand ?? slashMenu.selectedSlashCommand}
               selectedSlashOption={slashMenu.selectedSlashOption}
               slashOptionEmptyState={slashMenu.slashOptionEmptyState}

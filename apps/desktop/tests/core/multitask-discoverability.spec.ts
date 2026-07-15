@@ -86,7 +86,21 @@ test("shows Multitask and Working pills while a prompt is running", async () => 
     await expect(window.getByRole("dialog", { name: /Working/i })).toBeVisible();
 
     await window.getByTestId("composer-status-multitask-pill").click();
-    await expect(window.getByRole("dialog", { name: "Multitask" })).toBeVisible();
+    const multitaskDialog = window.getByRole("dialog", { name: "Multitask" });
+    await expect(multitaskDialog).toBeVisible();
+    await expect(multitaskDialog).toContainText("Enter queues it next. ⌘Enter steers the current run.");
+    const dialogLayout = await multitaskDialog.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return {
+        left: bounds.left,
+        right: bounds.right,
+        viewportWidth: window.innerWidth,
+        hasHorizontalOverflow: element.scrollWidth > element.clientWidth,
+      };
+    });
+    expect(dialogLayout.left).toBeGreaterThanOrEqual(0);
+    expect(dialogLayout.right).toBeLessThanOrEqual(dialogLayout.viewportWidth);
+    expect(dialogLayout.hasHorizontalOverflow).toBe(false);
 
     const queuedMessage: SessionQueuedMessage = {
       id: "queued-multitask-1",
