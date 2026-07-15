@@ -109,3 +109,42 @@ test("shows Multitask badge while running and keeps the composer typeable", asyn
     await harness.close();
   }
 });
+
+test("autocompletes and triggers /multitask from the slash menu", async () => {
+  test.setTimeout(90_000);
+  const userDataDir = await makeUserDataDir();
+  const workspacePath = await makeWorkspace("multitask-slash");
+  const harness = await launchDesktop(userDataDir, {
+    initialWorkspaces: [workspacePath],
+    testMode: "background",
+  });
+
+  try {
+    const window = await harness.firstWindow();
+    await createNamedThread(window, "Multitask slash");
+    const composer = window.getByTestId("composer");
+
+    await composer.fill("/multit");
+    await expect(window.getByTestId("slash-menu")).toBeVisible({ timeout: 15_000 });
+    await expect(window.getByTestId("slash-menu")).toContainText("/multitask");
+    await composer.press("Tab");
+    await expect(composer).toHaveValue("/multitask");
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect(window.getByTestId("composer-multitask-badge")).toBeVisible();
+    await expect(window.getByTestId("composer-multitask-badge")).toContainText("Multitask");
+
+    await emitRunningSnapshot(harness, window);
+    await expect(window.getByTestId("composer-status-working-pill")).toBeVisible({ timeout: 15_000 });
+    await composer.fill("/multit");
+    await expect(window.getByTestId("slash-menu")).toBeVisible();
+    await expect(window.getByTestId("slash-menu")).toContainText("/multitask");
+    await expect(window.getByTestId("slash-menu")).not.toContainText("/model");
+    await composer.press("Enter");
+    await expect(composer).toHaveValue("");
+    await expect(window.getByTestId("composer-multitask-badge")).toBeVisible();
+    await expect(window.getByTestId("queued-composer-messages")).toHaveCount(0);
+  } finally {
+    await harness.close();
+  }
+});

@@ -38,6 +38,7 @@ interface ComposerPanelProps {
   readonly setComposerDraft: Dispatch<SetStateAction<string>>;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly runningLabel: string;
+  readonly multitaskArmed?: boolean;
   readonly transcript: readonly TranscriptMessage[];
   readonly contextUsage?: SessionContextUsage;
   readonly terminalVisible: boolean;
@@ -107,6 +108,7 @@ export function ComposerPanel({
   setComposerDraft,
   composerRef,
   runningLabel,
+  multitaskArmed = false,
   transcript,
   contextUsage,
   terminalVisible,
@@ -203,7 +205,16 @@ export function ComposerPanel({
                 ? queuedMessages.length > 0
                   ? `Multitask · ${queuedMessages.length}`
                   : "Multitask"
-                : undefined
+                : multitaskArmed
+                  ? "Multitask"
+                  : undefined
+            }
+            multitaskHint={
+              selectedSession.status === "running"
+                ? "Enter queues · ⌘Enter steers"
+                : multitaskArmed
+                  ? "Send a prompt — follow-ups queue while it runs"
+                  : undefined
             }
             queuedMessages={queuedMessages}
             editingQueuedMessageId={editingQueuedMessageId}

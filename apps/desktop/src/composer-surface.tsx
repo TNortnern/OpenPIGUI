@@ -31,6 +31,7 @@ interface ComposerSurfaceProps {
   readonly attachments: readonly ComposerAttachment[];
   /** When set, shows a Multitask mode chip above the input (Cursor-style; no overlay). */
   readonly multitaskLabel?: string;
+  readonly multitaskHint?: string;
   readonly queuedMessages: readonly import("./desktop-state").QueuedComposerMessage[];
   readonly editingQueuedMessageId?: string;
   readonly slashSections: readonly ComposerSlashCommandSection[];
@@ -82,6 +83,7 @@ export function ComposerSurface({
   composerRef,
   attachments,
   multitaskLabel,
+  multitaskHint,
   queuedMessages,
   editingQueuedMessageId,
   slashSections,
@@ -246,7 +248,7 @@ export function ComposerSurface({
       {multitaskLabel ? (
         <div className="composer__multitask-badge" data-testid="composer-multitask-badge">
           <span className="composer__multitask-badge-label">{multitaskLabel}</span>
-          <span className="composer__multitask-badge-hint">Enter queues · ⌘Enter steers</span>
+          {multitaskHint ? <span className="composer__multitask-badge-hint">{multitaskHint}</span> : null}
         </div>
       ) : null}
       <QueuedComposerMessages

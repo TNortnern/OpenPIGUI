@@ -75,6 +75,7 @@ interface UseSlashMenuParams {
   readonly allowTreeCommand?: boolean;
   readonly immediateCommandMode?: "submit" | "prefill";
   readonly onRunTreeCommand?: () => void;
+  readonly onTriggerMultitask?: () => void;
   readonly onSelectModelOption?: (provider: string, modelId: string) => void;
   readonly onSelectThinkingOption?: (level: string) => void;
   readonly onSelectLoginProvider?: (providerId: string) => void;
@@ -119,6 +120,7 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
     allowTreeCommand = true,
     immediateCommandMode = "submit",
     onRunTreeCommand,
+    onTriggerMultitask,
     onSelectModelOption,
     onSelectThinkingOption,
     onSelectLoginProvider,
@@ -136,6 +138,7 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
     activeSlashQuery
       ? buildSlashCommandSections(slashQuery, selectedRuntime, sessionCommands, commandCompatibility, {
           allowTreeCommand,
+          isRunning,
         })
       : [];
   const slashSuggestions = flattenSlashSections(slashSections);
@@ -143,7 +146,6 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
   const activeSlashOptionCommand =
     activeSlashFlow?.command ?? (exactSlashCommand?.submitMode === "pick-option" ? exactSlashCommand : undefined);
   const showSlashMenu =
-    !isRunning &&
     Boolean(activeSlashQuery) &&
     !activeSlashOptionCommand &&
     composerDraft !== slashMenuSuppressedDraft &&
@@ -272,6 +274,20 @@ export function useSlashMenu(params: UseSlashMenuParams): SlashMenuState {
       resetSlashUi();
       setComposerDraft("");
       onRunTreeCommand?.();
+      return;
+    }
+
+    if (command.kind === "multitask") {
+      if (mode === "tab") {
+        closeSlashOptionMenu();
+        // Keep the slash menu open so Enter still triggers Multitask instead of sending "/multitask" as chat.
+        fillComposerFromSlash(command.command);
+        return;
+      }
+      resetSlashUi();
+      setComposerDraft("");
+      onTriggerMultitask?.();
+      focusComposer();
       return;
     }
 

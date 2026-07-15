@@ -7,6 +7,7 @@ import type {
 } from "@pi-gui/session-driver/runtime-types";
 import type { ExtensionCommandCompatibilityRecord } from "./desktop-state";
 import { isLoginSlashProvider } from "./login-slash-providers";
+import { MULTITASK_SLASH_COMMAND } from "./multitask-status";
 import { titleCase } from "./string-utils";
 import {
   THINKING_OPTIONS as THINKING_OPTION_CATALOG,
@@ -33,7 +34,8 @@ export type ComposerSlashCommandKind =
   | "login"
   | "logout"
   | "settings"
-  | "scoped-models";
+  | "scoped-models"
+  | "multitask";
 
 export interface ComposerSlashCommand {
   readonly id: string;
@@ -44,6 +46,8 @@ export interface ComposerSlashCommand {
   readonly description: string;
   readonly submitMode?: "immediate" | "prefill" | "pick-option";
   readonly section: "runtime" | "host";
+  /** When true, command remains in the slash menu while a run is active. */
+  readonly availableWhileRunning?: boolean;
   readonly runtimeCommand?: RuntimeCommandRecord;
   readonly sourceLabel?: string;
   readonly compatibility?: ExtensionCommandCompatibilityRecord;
@@ -100,6 +104,17 @@ const INCOMPLETE_COMMAND_MESSAGES: Readonly<Record<string, string>> = {
 } as const;
 
 const HOST_ACTION_SLASH_COMMANDS: readonly ComposerSlashCommand[] = [
+  {
+    id: "host:multitask",
+    kind: "multitask",
+    command: MULTITASK_SLASH_COMMAND,
+    template: MULTITASK_SLASH_COMMAND,
+    title: "Multitask",
+    description: "Queue follow-ups while a run is active · Enter queues · Cmd+Enter steers",
+    submitMode: "immediate",
+    section: "host",
+    availableWhileRunning: true,
+  },
   {
     id: "host:model",
     kind: "model",
@@ -239,10 +254,12 @@ export function buildSlashCommandSections(
   compatibilityRecords: readonly ExtensionCommandCompatibilityRecord[] = [],
   options: {
     readonly allowTreeCommand?: boolean;
+    readonly isRunning?: boolean;
   } = {},
 ): readonly ComposerSlashCommandSection[] {
   const normalizedQuery = query.trim().toLowerCase();
-  const availableRuntimeCommands = resolveRuntimeCommands(runtime, sessionCommands);
+  const isRunning = options.isRunning ?? false;
+  const availableRuntimeCommands = isRunning ? [] : resolveRuntimeCommands(runtime, sessionCommands);
   const compatibilityByKey = new Map(
     compatibilityRecords.map((record) => [`${record.extensionPath}::${record.commandName}`, record] as const),
   );
@@ -263,7 +280,10 @@ export function buildSlashCommandSections(
     .filter((command) => matchesCommand(command, normalizedQuery));
   const allowTreeCommand = options.allowTreeCommand ?? true;
   const hostMatches = HOST_ACTION_SLASH_COMMANDS.filter(
-    (command) => (allowTreeCommand || command.kind !== "tree") && matchesCommand(command, normalizedQuery),
+    (command) =>
+      (allowTreeCommand || command.kind !== "tree") &&
+      (!isRunning || command.availableWhileRunning) &&
+      matchesCommand(command, normalizedQuery),
   );
 
   const sections: ComposerSlashCommandSection[] = [

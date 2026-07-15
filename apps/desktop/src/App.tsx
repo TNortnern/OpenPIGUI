@@ -78,6 +78,7 @@ import {
   type WorkingAgentInspectorTarget,
 } from "./working-agent-inspector";
 import type { WorkingAgentEntry } from "./composer-status-chrome";
+import { MULTITASK_SLASH_COMMAND } from "./multitask-status";
 import { getEffectiveModelRuntime } from "./model-settings";
 import { applyThemePresetToRoot } from "./theme-presets";
 import { resolveRepoWorkspaceId } from "./workspace-roots";
@@ -262,6 +263,7 @@ export default function App() {
   const [newThreadThinkingLevel, setNewThreadThinkingLevel] = useState<string | undefined>();
   const [newThreadComposerError, setNewThreadComposerError] = useState<string | undefined>();
   const [inspectedWorkingAgent, setInspectedWorkingAgent] = useState<WorkingAgentEntry | null>(null);
+  const [multitaskArmed, setMultitaskArmed] = useState(false);
   // Remember the last model the user actually used so New thread doesn't snap back to the workspace default.
   const lastUsedModelRef = useRef<{
     provider: string;
@@ -527,6 +529,16 @@ export default function App() {
   useEffect(() => {
     composerHistoryCursorRef.current = null;
   }, [selectedSessionKey]);
+
+  useEffect(() => {
+    setMultitaskArmed(false);
+  }, [selectedSessionKey]);
+
+  useEffect(() => {
+    if (selectedSession?.status === "running") {
+      setMultitaskArmed(false);
+    }
+  }, [selectedSession?.status]);
   composerDraftRef.current = composerDraft;
   const isRightRailOpen = Boolean(selectedSessionKey) && activeRailSession.open;
   const rightRailMode = activeRailSession.mode;
@@ -1361,6 +1373,14 @@ export default function App() {
     updateSnapshot,
     allowTreeCommand: true,
     onRunTreeCommand: openTreeModal,
+    onTriggerMultitask: () => {
+      if (selectedSession?.status === "running") {
+        focusComposer();
+        return;
+      }
+      setMultitaskArmed(true);
+      focusComposer();
+    },
   });
 
   const enableSelectedMentionExtension = useCallback(
@@ -1416,6 +1436,9 @@ export default function App() {
     updateSnapshot,
     allowTreeCommand: false,
     immediateCommandMode: "prefill",
+    onTriggerMultitask: () => {
+      focusNewThreadComposer();
+    },
     onSelectModelOption: (provider, modelId) => {
       setNewThreadProvider(provider);
       setNewThreadModelId(modelId);
@@ -2268,6 +2291,17 @@ export default function App() {
       return;
     }
     if (selectedSessionModelOnboarding.requiresModelSelection) {
+      return;
+    }
+
+    if (composerDraft.trim().toLowerCase() === MULTITASK_SLASH_COMMAND) {
+      setComposerDraft("");
+      if (selectedSession.status === "running") {
+        focusComposer();
+      } else {
+        setMultitaskArmed(true);
+        focusComposer();
+      }
       return;
     }
 
@@ -3398,6 +3432,7 @@ export default function App() {
               }
               onSubmit={submitComposerDraft}
               runningLabel={runningLabel}
+              multitaskArmed={multitaskArmed}
               selectedSession={selectedSession}
               selectedWorkspace={selectedWorkspace}
               selectedWorktree={selectedWorktree}
