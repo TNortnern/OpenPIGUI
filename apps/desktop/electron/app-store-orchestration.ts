@@ -222,12 +222,25 @@ async function createChildThreadRecord(
       publishSelectedTranscript: false,
     });
 
-    void submitComposerToSession(store, childRef, prompt, [], {
-      deliverAs: "followUp",
-      allowCommands: false,
-    }).catch((error) => {
-      void store.withError(error);
-    });
+    // Await prompt start so Multitask Working count can include the peer immediately.
+    // Tool-spawned children keep fire-and-forget via sourceToolCallId path callers.
+    if (input.sourceToolCallId) {
+      void submitComposerToSession(store, childRef, prompt, [], {
+        deliverAs: "followUp",
+        allowCommands: false,
+      }).catch((error) => {
+        void store.withError(error);
+      });
+    } else {
+      try {
+        await submitComposerToSession(store, childRef, prompt, [], {
+          deliverAs: "followUp",
+          allowCommands: false,
+        });
+      } catch (error) {
+        void store.withError(error);
+      }
+    }
 
     return store.state.orchestrationChildren.find((entry) => entry.id === child.id) ?? childWithEvidence;
   } finally {

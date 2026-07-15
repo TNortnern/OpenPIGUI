@@ -76,6 +76,7 @@ export function ComposerStatusChrome({
   const rootRef = useRef<HTMLDivElement | null>(null);
 
   const isWorking = selectedSession.status === "running";
+  const hasPeerWorkers = peerWorkingAgents.some((agent) => agent.kind === "running");
   const branchName =
     selectedWorktree?.branchName ??
     selectedWorkspace.branchName ??
@@ -128,12 +129,14 @@ export function ComposerStatusChrome({
 
   const workingCount = workingAgents.filter((agent) => agent.kind === "running").length;
   const queuedCount = workingAgents.filter((agent) => agent.kind === "queued").length;
-  const showMultitask = shouldShowMultitask(isWorking);
+  // Keep Working/Multitask chrome visible while this chat or any peer agent is active.
+  const showWorkingPill = workingCount > 0;
+  const showMultitask = shouldShowMultitask(isWorking || hasPeerWorkers);
 
   const terminalSessions = terminalPanel?.sessions ?? [];
   const runningTerminals = terminalSessions.filter((session) => session.status === "running");
   const terminalCount = terminalVisible ? Math.max(1, runningTerminals.length || terminalSessions.length) : 0;
-  const showActivity = isWorking || terminalCount > 0 || showMultitask;
+  const showActivity = showWorkingPill || terminalCount > 0 || showMultitask;
 
   useEffect(() => {
     if (!showActivity && panel !== "context") {
@@ -196,10 +199,10 @@ export function ComposerStatusChrome({
   }, [panel]);
 
   useEffect(() => {
-    if (!isWorking && panel === "working") {
+    if (!showWorkingPill && panel === "working") {
       setPanel("none");
     }
-  }, [isWorking, panel]);
+  }, [showWorkingPill, panel]);
 
   const togglePanel = (next: StatusPanel) => {
     setPanel((current) => (current === next ? "none" : next));
@@ -207,9 +210,9 @@ export function ComposerStatusChrome({
 
   return (
     <div className="composer-status" ref={rootRef} data-testid="composer-status">
-      {(isWorking || terminalCount > 0 || showMultitask) ? (
+      {(showWorkingPill || terminalCount > 0 || showMultitask) ? (
         <div className="composer-status__pills" data-testid="composer-status-pills">
-          {isWorking ? (
+          {showWorkingPill ? (
             <button
               type="button"
               className={`composer-status__pill${panel === "working" ? " composer-status__pill--active" : ""}`}
